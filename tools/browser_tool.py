@@ -255,10 +255,13 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
             "Sen bir Web Navigasyon Planlayicisisin. Kullanicinin verdigi arastirma gorevi icin "
             "ziyaret edilmesi gereken EN GUVENILIR dogrudan resmi web sitesi URL'lerini (en fazla 5 adet) JSON dizisi olarak dondur.\n"
             "Eger gorev is/staj ilani aramasi ise LinkedIn Public Jobs (https://www.linkedin.com/jobs/search/?keywords=AI%20Engineer%20Python&location=Turkey), "
-            "Youthall (https://www.youthall.com/tr/jobs/) veya Coderspace (https://coderspace.io/etkinlikler) gibi dogrudan arama URL'lerini ekle.\n"
+            "LinkedIn Staj/Junior (https://www.linkedin.com/jobs/search/?keywords=Python%20Developer%20AI&location=Turkey), "
+            "Youthall (https://www.youthall.com/tr/jobs/) veya Coderspace (https://coderspace.io/etkinlikler) URL'lerini kullan. "
+            "ASLA kariyer.net veya glassdoor.com ekleme (CAPTCHA engeli vardir).\n"
             f"Gorev: {task}"
         )
 
+        blocked_domains = ["kariyer.net", "glassdoor.com", "indeed.com"]
         planned_urls: List[str] = []
         for _ in range(5):
             try:
@@ -275,7 +278,11 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                 match = re.search(r"\[[\s\S]*?\]", content)
                 if match:
                     parsed = json.loads(match.group(0))
-                    valid = [str(u).strip() for u in parsed if str(u).startswith("http")]
+                    valid = [
+                        str(u).strip()
+                        for u in parsed
+                        if str(u).startswith("http") and not any(bd in str(u).lower() for bd in blocked_domains)
+                    ]
                     if valid:
                         planned_urls = valid[:5]
                         break
@@ -292,7 +299,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                 planned_urls = [
                     "https://github.com/Piardian",
                     "https://www.linkedin.com/jobs/search/?keywords=AI%20Engineer%20Python&location=Turkey",
-                    "https://www.linkedin.com/jobs/search/?keywords=Yapay%20Zeka%20Python%20Stajyer&location=Turkey",
+                    "https://www.linkedin.com/jobs/search/?keywords=Python%20Developer%20LLM&location=Turkey",
                     "https://www.youthall.com/tr/jobs/",
                     "https://coderspace.io/etkinlikler",
                 ]
@@ -306,13 +313,13 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                 ]
 
         for pu in planned_urls:
-            if pu not in urls:
+            if pu not in urls and not any(bd in pu.lower() for bd in blocked_domains):
                 urls.append(pu)
 
         return urls[:6]
 
     def _scrape_with_playwright(self, urls: List[str], headless: bool) -> Tuple[List[str], List[Dict[str, Any]]]:
-        """Gercek Chromium tarayicisi acarak verilen URL'leri dolasir, baslik, metin ve iletisim linklerini toplar."""
+        """Gercek Chromium tarayicisi acarak verilen URL'leri dolasir, baslik, metin, is kartlari ve iletisim linklerini toplar."""
         from playwright.sync_api import sync_playwright
 
         visited: List[str] = []
@@ -332,10 +339,19 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
             for url in urls:
                 try:
                     page.goto(url, wait_until="domcontentloaded", timeout=15000)
-                    page.wait_for_timeout(1200)
-                    visited.append(page.url)
+                    page.wait_for_timeout(1400)
 
                     title = page.title()
+                    raw_full_text = page.evaluate("() => document.body ? document.body.innerText : ''")
+
+                    # CAPTCHA / Bot koruma sayfalarini tespit et ve rapora kirli veri olarak sokma
+                    if any(
+                        bot_sig in (title + " " + (raw_full_text or "")[:500]).lower()
+                        for bot_sig in ["access to this page has been denied", "px-captcha", "just a moment...", "humans only"]
+                    ):
+                        continue
+
+                    visited.append(page.url)
                     meta_desc = page.evaluate(
                         """() => {
                             const m = document.querySelector('meta[name="description"], meta[property="og:description"]');
@@ -348,43 +364,85 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                             const clone = document.body ? document.body.cloneNode(true) : null;
                             if (!clone) return rawText;
                             const noise = clone.querySelectorAll(
-                                'script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [class*="popup" i]'
+                                'script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [class*="popup" i], .jobs-search__filter-list, .filters'
                             );
                             noise.forEach(s => s.remove());
                             return (clone.innerText || rawText);
                         }"""
                     )
-                    raw_full_text = page.evaluate("() => document.body ? document.body.innerText : ''")
+
+                    # Ozel LinkedIn & Is Ilani Kart Cikarimi
+                    job_cards = page.evaluate(
+                        """() => {
+                            const cards = Array.from(document.querySelectorAll('.base-search-card, .job-search-card, li .base-card'));
+                            const results = [];
+                            for (const c of cards) {
+                                const titleEl = c.querySelector('.base-search-card__title, h3');
+                                const compEl = c.querySelector('.base-search-card__subtitle, h4');
+                                const locEl = c.querySelector('.job-search-card__location');
+                                const linkEl = c.querySelector('a.base-card__full-link, a[href*="/jobs/view/"]');
+                                if (titleEl && linkEl && linkEl.href) {
+                                    const t = (titleEl.innerText || '').trim();
+                                    const comp = compEl ? (compEl.innerText || '').trim() : '';
+                                    const loc = locEl ? (locEl.innerText || '').trim() : '';
+                                    results.push({
+                                        text: `${t} — ${comp} (${loc})`.replace(/\\s+/g, ' ').trim(),
+                                        href: linkEl.href.split('?')[0]
+                                    });
+                                }
+                            }
+                            return results.slice(0, 10);
+                        }"""
+                    )
+
                     links_info = page.evaluate(
                         """() => {
                             const anchors = Array.from(document.querySelectorAll('a[href]'));
                             return anchors
-                                .map(a => ({text: (a.innerText || '').trim(), href: a.href}))
-                                .filter(x => x.href.startsWith('mailto:') || x.href.startsWith('tel:') ||
-                                             /iletisim|contact|about|hakkimizda|product|urun|cozum|jobs\/view|job|ilan|kariyer|career|intern|staj|etkinlik/i.test(x.text + x.href))
-                                .slice(0, 25);
+                                .map(a => ({text: (a.innerText || '').replace(/\\s+/g, ' ').trim(), href: a.href}))
+                                .filter(x => {
+                                    const combined = (x.text + ' ' + x.href).toLowerCase();
+                                    if (/skip to|sign in|join now|uas\\/login|authwall|report-abuse|help\\.github|forgot-password|#main-content|javascript:/i.test(combined)) {
+                                        return false;
+                                    }
+                                    return x.href.startsWith('mailto:') || x.href.startsWith('tel:') ||
+                                           /iletisim|contact|about|hakkimizda|product|urun|cozum|jobs\\/view|ilan|kariyer|career|intern|staj|etkinlik|repositories/i.test(combined);
+                                })
+                                .slice(0, 20);
                         }"""
                     )
 
+                    # Eger LinkedIn is kartlari bulunduysa relevant_links'in en basina koy
+                    merged_links = job_cards + [lk for lk in links_info if lk.get("href") not in {jc.get("href") for jc in job_cards}]
+
                     clean_text = re.sub(r"\s+", " ", body_text or "").strip()
                     clean_text = re.sub(
-                        r"^(Skip to content|We value your privacy.*?(Accept All|Reject All)|Home\s+Products.*?Contact)\s*",
-                        "",
+                        r"(You signed in with another tab or window.*?Dismiss alert|Skip to (main )?content|We value your privacy.*?(Accept All|Reject All)|Date posted.*?Sign in to create job alert)\s*",
+                        " ",
                         clean_text,
                         flags=re.IGNORECASE,
                     ).strip()[:1200]
-                    if meta_desc and meta_desc[:60].lower() not in clean_text.lower():
+
+                    if job_cards:
+                        cards_summary = " | ".join(f"{idx}. {jc['text']}" for idx, jc in enumerate(job_cards[:6], start=1))
+                        clean_text = f"Canlı İlanlar: {cards_summary} — {clean_text}"[:1200]
+                    elif meta_desc and meta_desc[:60].lower() not in clean_text.lower():
                         clean_text = f"{meta_desc} — {clean_text}"[:1200]
 
                     emails = list(set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", (raw_full_text or "") + " " + (body_text or ""))))
 
-                    # Eger iletisim sayfasi linki varsa iletisim sayfasina da tikla/git
+                    # Eger kurumsal iletisim sayfasi linki varsa (github report-abuse haric) ziyaret et
                     contact_sub_url = None
-                    for lk in links_info:
-                        href = lk.get("href", "")
-                        if href.startswith("http") and any(w in href.lower() for w in ["contact", "iletisim"]):
-                            contact_sub_url = href
-                            break
+                    if "github.com" not in url.lower() and "linkedin.com" not in url.lower():
+                        for lk in merged_links:
+                            href = lk.get("href", "")
+                            if (
+                                href.startswith("http")
+                                and any(w in href.lower() for w in ["contact", "iletisim"])
+                                and not any(bad in href.lower() for bad in ["report-abuse", "help.github"])
+                            ):
+                                contact_sub_url = href
+                                break
 
                     contact_page_text = ""
                     if contact_sub_url and contact_sub_url not in visited:
@@ -396,7 +454,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                                 """() => {
                                     const clone = document.body ? document.body.cloneNode(true) : null;
                                     if (!clone) return '';
-                                    clone.querySelectorAll('script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [id*="consent" i]').forEach(s => s.remove());
+                                    clone.querySelectorAll('script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i]').forEach(s => s.remove());
                                     return clone.innerText || '';
                                 }"""
                             )
@@ -412,7 +470,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                         "title": title,
                         "meta_description": meta_desc,
                         "emails_detected": emails[:6],
-                        "relevant_links": links_info[:8],
+                        "relevant_links": merged_links[:8],
                         "main_excerpt": clean_text,
                         "contact_page_excerpt": contact_page_text,
                     })
@@ -464,12 +522,13 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
         for idx, snap in enumerate(snapshots, start=1):
             url = snap.get("url", "")
             title = (snap.get("title") or url).split("|")[0].split("-")[0].strip() or f"Kaynak #{idx}"
-            emails = [e for e in snap.get("emails_detected", []) if not any(x in e.lower() for x in ["privacy@commercetools", "example", "sentry"])]
+            emails = [e for e in snap.get("emails_detected", []) if not any(x in e.lower() for x in ["privacy@commercetools", "example", "sentry", "onedocs"])]
             links = snap.get("relevant_links", [])
             action_links = [
                 lk.get("href")
                 for lk in links
                 if any(w in (lk.get("href") or "").lower() for w in ["jobs/view", "ilan", "jobs", "etkinlik", "contact", "iletisim", "demo"])
+                and "report-abuse" not in (lk.get("href") or "").lower()
             ]
             contact_info = ", ".join(emails[:2]) if emails else ""
             if action_links:
@@ -477,19 +536,19 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
             if not contact_info:
                 contact_info = url
 
-            excerpt = (snap.get("main_excerpt") or snap.get("error") or "")[:240].replace("|", " ").strip()
+            excerpt = (snap.get("main_excerpt") or snap.get("error") or "")[:260].replace("|", " ").strip()
             rows.append(f"| {idx} | **{title}** | {url} | {excerpt}... | {contact_info} |")
             top_links_md = "\n".join(
-                f"  - [{(lk.get('text') or lk.get('href'))[:70]}]({lk.get('href')})"
-                for lk in links[:4]
+                f"  - [{(lk.get('text') or lk.get('href'))[:85]}]({lk.get('href')})"
+                for lk in links[:6]
                 if lk.get("href")
             )
             details.append(
                 f"### {idx}. {title} ({url})\n"
                 f"- **Sayfa Başlığı:** {snap.get('title', '-')}\n"
                 f"- **Doğrudan Bağlantı / İletişim:** {contact_info}\n"
-                f"- **Canlı DOM İçerik Özeti:** {(snap.get('main_excerpt') or '')[:500]}\n"
-                + (f"- **Öne Çıkan Alt Bağlantılar / İlanlar:**\n{top_links_md}\n" if top_links_md else "")
+                f"- **Canlı DOM İçerik Özeti:** {(snap.get('main_excerpt') or '')[:550]}\n"
+                + (f"- **Öne Çıkan İlanlar / Alt Bağlantılar:**\n{top_links_md}\n" if top_links_md else "")
             )
 
         table_header = (
@@ -571,10 +630,18 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
         )
         if should_open_for_user:
             urls_to_open: List[str] = []
+            # Oncelik 1: Dogrudan tekil is ilani sayfalari (/jobs/view/...)
             for snap in snapshots:
                 for lk in snap.get("relevant_links", []):
                     href = lk.get("href", "")
-                    if href.startswith("http") and any(w in href.lower() for w in ["jobs/view", "linkedin.com/jobs", "youthall.com/tr/jobs", "coderspace.io/etkinlikler"]):
+                    if href.startswith("http") and "/jobs/view/" in href.lower():
+                        if href not in urls_to_open:
+                            urls_to_open.append(href)
+            # Oncelik 2: Genel is arama sayfalari
+            for snap in snapshots:
+                for lk in snap.get("relevant_links", []):
+                    href = lk.get("href", "")
+                    if href.startswith("http") and any(w in href.lower() for w in ["linkedin.com/jobs", "youthall.com/tr", "coderspace.io"]):
                         if href not in urls_to_open:
                             urls_to_open.append(href)
             if not urls_to_open:
