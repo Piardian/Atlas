@@ -5,6 +5,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
+import webbrowser
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -241,16 +242,24 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
             if u not in urls:
                 urls.append(u)
 
-        if urls:
+        t_low = task.lower()
+        is_job_search = any(
+            k in t_low
+            for k in ["iş ilan", "is ilan", "staj", "kariyer", "linkedin", "cv", "job", "intern"]
+        )
+
+        if urls and not is_job_search:
             return urls[:6]
 
         prompt = (
             "Sen bir Web Navigasyon Planlayicisisin. Kullanicinin verdigi arastirma gorevi icin "
             "ziyaret edilmesi gereken EN GUVENILIR dogrudan resmi web sitesi URL'lerini (en fazla 5 adet) JSON dizisi olarak dondur.\n"
-            "Ornek Cikti: [\"https://vispera.co\", \"https://www.cbot.ai\", \"https://tazi.ai\", \"https://www.intenseye.com\", \"https://www.sestek.com\"]\n"
+            "Eger gorev is/staj ilani aramasi ise LinkedIn Public Jobs (https://www.linkedin.com/jobs/search/?keywords=AI%20Engineer%20Python&location=Turkey), "
+            "Youthall (https://www.youthall.com/tr/jobs/) veya Coderspace (https://coderspace.io/etkinlikler) gibi dogrudan arama URL'lerini ekle.\n"
             f"Gorev: {task}"
         )
 
+        planned_urls: List[str] = []
         for _ in range(5):
             try:
                 model, key = self.router.get_best_model_and_key(tier=self.tier, preferred_agent_idx=self.agent_idx)
@@ -268,7 +277,8 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                     parsed = json.loads(match.group(0))
                     valid = [str(u).strip() for u in parsed if str(u).startswith("http")]
                     if valid:
-                        return valid[:6]
+                        planned_urls = valid[:5]
+                        break
                 break
             except Exception as e:
                 err_s = str(e).lower()
@@ -277,13 +287,29 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                     continue
                 break
 
-        return [
-            "https://vispera.co",
-            "https://www.cbot.ai",
-            "https://tazi.ai",
-            "https://www.intenseye.com",
-            "https://www.sestek.com",
-        ]
+        if not planned_urls:
+            if is_job_search:
+                planned_urls = [
+                    "https://github.com/Piardian",
+                    "https://www.linkedin.com/jobs/search/?keywords=AI%20Engineer%20Python&location=Turkey",
+                    "https://www.linkedin.com/jobs/search/?keywords=Yapay%20Zeka%20Python%20Stajyer&location=Turkey",
+                    "https://www.youthall.com/tr/jobs/",
+                    "https://coderspace.io/etkinlikler",
+                ]
+            else:
+                planned_urls = [
+                    "https://vispera.co",
+                    "https://www.cbot.ai",
+                    "https://tazi.ai",
+                    "https://www.intenseye.com",
+                    "https://www.sestek.com",
+                ]
+
+        for pu in planned_urls:
+            if pu not in urls:
+                urls.append(pu)
+
+        return urls[:6]
 
     def _scrape_with_playwright(self, urls: List[str], headless: bool) -> Tuple[List[str], List[Dict[str, Any]]]:
         """Gercek Chromium tarayicisi acarak verilen URL'leri dolasir, baslik, metin ve iletisim linklerini toplar."""
@@ -335,7 +361,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                             return anchors
                                 .map(a => ({text: (a.innerText || '').trim(), href: a.href}))
                                 .filter(x => x.href.startsWith('mailto:') || x.href.startsWith('tel:') ||
-                                             /iletisim|contact|about|hakkimizda|product|urun|cozum/i.test(x.text + x.href))
+                                             /iletisim|contact|about|hakkimizda|product|urun|cozum|jobs\/view|job|ilan|kariyer|career|intern|staj|etkinlik/i.test(x.text + x.href))
                                 .slice(0, 25);
                         }"""
                     )
@@ -370,7 +396,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                                 """() => {
                                     const clone = document.body ? document.body.cloneNode(true) : null;
                                     if (!clone) return '';
-                                    clone.querySelectorAll('script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i]').forEach(s => s.remove());
+                                    clone.querySelectorAll('script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [id*="consent" i]').forEach(s => s.remove());
                                     return clone.innerText || '';
                                 }"""
                             )
@@ -386,7 +412,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                         "title": title,
                         "meta_description": meta_desc,
                         "emails_detected": emails[:6],
-                        "relevant_links": links_info[:6],
+                        "relevant_links": links_info[:8],
                         "main_excerpt": clean_text,
                         "contact_page_excerpt": contact_page_text,
                     })
@@ -437,32 +463,41 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
         details = []
         for idx, snap in enumerate(snapshots, start=1):
             url = snap.get("url", "")
-            title = (snap.get("title") or url).split("|")[0].split("-")[0].strip() or f"Şirket #{idx}"
+            title = (snap.get("title") or url).split("|")[0].split("-")[0].strip() or f"Kaynak #{idx}"
             emails = [e for e in snap.get("emails_detected", []) if not any(x in e.lower() for x in ["privacy@commercetools", "example", "sentry"])]
             links = snap.get("relevant_links", [])
-            contact_links = [lk.get("href") for lk in links if any(w in (lk.get("href") or "").lower() for w in ["contact", "iletisim", "demo"])]
+            action_links = [
+                lk.get("href")
+                for lk in links
+                if any(w in (lk.get("href") or "").lower() for w in ["jobs/view", "ilan", "jobs", "etkinlik", "contact", "iletisim", "demo"])
+            ]
             contact_info = ", ".join(emails[:2]) if emails else ""
-            if contact_links:
-                contact_info = (contact_info + f" ({contact_links[0]})").strip()
+            if action_links:
+                contact_info = (contact_info + f" ({action_links[0]})").strip()
             if not contact_info:
-                contact_info = f"{url.rstrip('/')}/contact"
+                contact_info = url
 
             excerpt = (snap.get("main_excerpt") or snap.get("error") or "")[:240].replace("|", " ").strip()
             rows.append(f"| {idx} | **{title}** | {url} | {excerpt}... | {contact_info} |")
+            top_links_md = "\n".join(
+                f"  - [{(lk.get('text') or lk.get('href'))[:70]}]({lk.get('href')})"
+                for lk in links[:4]
+                if lk.get("href")
+            )
             details.append(
                 f"### {idx}. {title} ({url})\n"
                 f"- **Sayfa Başlığı:** {snap.get('title', '-')}\n"
-                f"- **Tespit Edilen İletişim / E-posta:** {contact_info}\n"
-                f"- **Canlı DOM Ürün & Çözüm Özeti:** {(snap.get('main_excerpt') or '')[:500]}\n"
-                f"- **İletişim Sayfası Özeti:** {(snap.get('contact_page_excerpt') or 'Ana sayfa üzerinden doğrulandı.')[:350]}\n"
+                f"- **Doğrudan Bağlantı / İletişim:** {contact_info}\n"
+                f"- **Canlı DOM İçerik Özeti:** {(snap.get('main_excerpt') or '')[:500]}\n"
+                + (f"- **Öne Çıkan Alt Bağlantılar / İlanlar:**\n{top_links_md}\n" if top_links_md else "")
             )
 
         table_header = (
-            "## 🇹🇷 Türkiye'deki Yapay Zeka Şirketleri — Canlı Tarayıcı Araştırma Raporu\n\n"
-            "| # | Şirket Adı | Resmi Web Sitesi | Ana Ürünler & Çözümler (DOM Özeti) | İletişim Bilgileri |\n"
+            "## 🌐 Canlı Tarayıcı Araştırma & Eşleşme Raporu\n\n"
+            "| # | Kaynak / Platform | Web Adresi | İçerik & İlan Özeti (DOM) | Doğrudan Link / İletişim |\n"
             "|---|---|---|---|---|\n"
         )
-        return table_header + "\n".join(rows) + "\n\n---\n\n## 📋 Şirket Bazlı Detaylı Bulgular\n\n" + "\n".join(details)
+        return table_header + "\n".join(rows) + "\n\n---\n\n## 📋 Detaylı Bulgular ve Bağlantılar\n\n" + "\n".join(details)
 
     def _synthesize_with_llm(self, task: str, snapshots: List[Dict[str, Any]]) -> str:
         """Tarayicinin topladigi gercek DOM verilerini goreve gore yapilandirilmis rapora donusturur."""
@@ -471,8 +506,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
             "Sen Kıdemli bir Web Araştırma ve Veri Çıkarım Ajanısın (Browser Extraction Agent).\n"
             "Gerçek tarayıcı (Browser) üzerinden ziyaret edilen sitelerin DOM içerikleri aşağıda verilmiştir.\n"
             "Kullanıcının görevini bu gerçek verilerle ve kurumsal doğrulukla yerine getir.\n"
-            "Çıktında mutlaka Markdown karşılaştırma tablosu (| # | Şirket Adı | Web Sitesi | Yapay Zeka Ürünleri & Çözümleri | İletişim Bilgileri |) "
-            "ve ardından her şirketin detaylı özetini Türkçe olarak sun."
+            "Çıktında mutlaka Markdown karşılaştırma tablosu ve ardından detaylı bulguları / doğrudan başvuru veya iletişim linklerini Türkçe olarak sun."
         )
 
         for _ in range(8):
@@ -528,6 +562,28 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
             visited, snapshots = self._scrape_via_http_fallback(target_urls)
 
         extracted_report = self._synthesize_with_llm(task, snapshots)
+
+        # Eger kullanici buldugu siteleri tarayicida acip karsisina getirmesini istediyse veya --show-browser aktifse
+        t_low = task.lower()
+        should_open_for_user = (not headless) or any(
+            phrase in t_low
+            for phrase in ["karşıma getir", "karsima getir", "tarayıcıdan aç", "tarayicidan ac", "tarayıcıda aç", "ekranda aç"]
+        )
+        if should_open_for_user:
+            urls_to_open: List[str] = []
+            for snap in snapshots:
+                for lk in snap.get("relevant_links", []):
+                    href = lk.get("href", "")
+                    if href.startswith("http") and any(w in href.lower() for w in ["jobs/view", "linkedin.com/jobs", "youthall.com/tr/jobs", "coderspace.io/etkinlikler"]):
+                        if href not in urls_to_open:
+                            urls_to_open.append(href)
+            if not urls_to_open:
+                urls_to_open = [u for u in (visited or target_urls) if "github.com" not in u][:3]
+            for open_u in urls_to_open[:3]:
+                try:
+                    webbrowser.open_new_tab(open_u)
+                except Exception:
+                    pass
 
         return BrowserTaskResult(
             success=True,

@@ -24,6 +24,7 @@ class SpecificationExpander:
             "araştır", "arastir", "web site", "şirketlerini bul", "sirketlerini bul",
             "iletişim bilgilerini çıkar", "iletisim bilgilerini cikar", "tablo halinde raporla",
             "browser", "tarayıcı", "tarayici", "web research", "scrape", "ürünlerini çıkar",
+            "linkedin", "iş ilan", "is ilan", "staj ilan", "kariyer", "cv", "karşıma getir", "karsima getir",
         ]
         coding_keywords = [
             "fastapi", "endpoint", "veritabanı", "database", "mql5", "ea geliştir",
