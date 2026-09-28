@@ -310,13 +310,25 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                     visited.append(page.url)
 
                     title = page.title()
-                    body_text = page.evaluate(
+                    meta_desc = page.evaluate(
                         """() => {
-                            const scripts = document.querySelectorAll('script, style, noscript');
-                            scripts.forEach(s => s.remove());
-                            return document.body ? document.body.innerText : '';
+                            const m = document.querySelector('meta[name="description"], meta[property="og:description"]');
+                            return m ? (m.getAttribute('content') || '').trim() : '';
                         }"""
                     )
+                    body_text = page.evaluate(
+                        """() => {
+                            const rawText = document.body ? document.body.innerText : '';
+                            const clone = document.body ? document.body.cloneNode(true) : null;
+                            if (!clone) return rawText;
+                            const noise = clone.querySelectorAll(
+                                'script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [class*="popup" i]'
+                            );
+                            noise.forEach(s => s.remove());
+                            return (clone.innerText || rawText);
+                        }"""
+                    )
+                    raw_full_text = page.evaluate("() => document.body ? document.body.innerText : ''")
                     links_info = page.evaluate(
                         """() => {
                             const anchors = Array.from(document.querySelectorAll('a[href]'));
@@ -328,10 +340,19 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                         }"""
                     )
 
-                    clean_text = re.sub(r"\s+", " ", body_text or "").strip()[:1200]
-                    emails = list(set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", body_text or "")))
+                    clean_text = re.sub(r"\s+", " ", body_text or "").strip()
+                    clean_text = re.sub(
+                        r"^(Skip to content|We value your privacy.*?(Accept All|Reject All)|Home\s+Products.*?Contact)\s*",
+                        "",
+                        clean_text,
+                        flags=re.IGNORECASE,
+                    ).strip()[:1200]
+                    if meta_desc and meta_desc[:60].lower() not in clean_text.lower():
+                        clean_text = f"{meta_desc} — {clean_text}"[:1200]
 
-                    # Eger iletisim sayfasi linki varsa ve ana sayfada e-posta yoksa iletisim sayfasina da tikla/git
+                    emails = list(set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", (raw_full_text or "") + " " + (body_text or ""))))
+
+                    # Eger iletisim sayfasi linki varsa iletisim sayfasina da tikla/git
                     contact_sub_url = None
                     for lk in links_info:
                         href = lk.get("href", "")
@@ -345,9 +366,17 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                             page.goto(contact_sub_url, wait_until="domcontentloaded", timeout=10000)
                             page.wait_for_timeout(800)
                             visited.append(page.url)
-                            c_raw = page.evaluate("() => document.body ? document.body.innerText : ''")
+                            c_raw = page.evaluate(
+                                """() => {
+                                    const clone = document.body ? document.body.cloneNode(true) : null;
+                                    if (!clone) return '';
+                                    clone.querySelectorAll('script, style, noscript, nav, header, [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i]').forEach(s => s.remove());
+                                    return clone.innerText || '';
+                                }"""
+                            )
+                            c_full = page.evaluate("() => document.body ? document.body.innerText : ''")
                             contact_page_text = re.sub(r"\s+", " ", c_raw or "").strip()[:800]
-                            c_emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", c_raw or "")
+                            c_emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", c_full or "")
                             emails = list(set(emails + c_emails))
                         except Exception:
                             pass
@@ -355,6 +384,7 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                     page_snapshots.append({
                         "url": url,
                         "title": title,
+                        "meta_description": meta_desc,
                         "emails_detected": emails[:6],
                         "relevant_links": links_info[:6],
                         "main_excerpt": clean_text,
