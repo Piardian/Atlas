@@ -19,23 +19,41 @@ The repository also contains a verified end-to-end web research proof of concept
 
 ## Visual overview
 
-The following architecture diagram shows the main Atlas execution path, from a natural-language request to specialized agents, real browser execution or local code execution, review, and persistent output.
+The following diagram shows the main Atlas execution path, from a natural-language request to specialized agents, browser/code execution, review, and persistent output.
 
 ![Atlas architecture overview](docs/architecture.svg)
 
-For a concrete browser-research run, the repository also contains the generated report and execution telemetry:
+### Verified execution evidence
+
+The repository contains a visual reconstruction of the recorded successful Browser Use run and a preview of the generated report.
+
+> These two visuals are **evidence panels reconstructed from the committed execution log/report**. They are not screenshots of the user's desktop. A real Chromium screenshot should be captured locally from the `--show-browser` command below and added to `docs/demo/` when available.
+
+![Verified Browser Use execution evidence](docs/demo/execution-evidence.svg)
+
+![Generated web research report preview](docs/demo/report-preview.svg)
+
+The underlying artifacts are also committed directly:
 
 - [TR_AI_COMPANIES_REPORT.md](workspace_research/TR_AI_COMPANIES_REPORT.md)
 - [WEB_RESEARCH_REPORT.md](workspace_research/WEB_RESEARCH_REPORT.md)
 - [browser_telemetry.jsonl](workspace_research/browser_telemetry.jsonl)
 
-To watch the real browser interact with live websites locally, run:
+To capture the real browser window locally:
 
 ```bash
 python -X utf8 examples/web_research_demo.py --show-browser
 ```
 
-A real GIF/screen recording should be captured from that command rather than represented as a simulated screenshot. This keeps the README evidence tied to an actual execution of the system.
+Recommended README capture sequence:
+
+```text
+1. Start the demo with --show-browser.
+2. Capture one image while the browser is navigating/searching.
+3. Capture one image when the final company/research page is open.
+4. Save them under docs/demo/.
+5. Embed them below the evidence panels.
+```
 
 ---
 
