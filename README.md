@@ -17,6 +17,28 @@ The repository also contains a verified end-to-end web research proof of concept
 
 ---
 
+## Visual overview
+
+The following architecture diagram shows the main Atlas execution path, from a natural-language request to specialized agents, real browser execution or local code execution, review, and persistent output.
+
+![Atlas architecture overview](docs/architecture.svg)
+
+For a concrete browser-research run, the repository also contains the generated report and execution telemetry:
+
+- [TR_AI_COMPANIES_REPORT.md](workspace_research/TR_AI_COMPANIES_REPORT.md)
+- [WEB_RESEARCH_REPORT.md](workspace_research/WEB_RESEARCH_REPORT.md)
+- [browser_telemetry.jsonl](workspace_research/browser_telemetry.jsonl)
+
+To watch the real browser interact with live websites locally, run:
+
+```bash
+python -X utf8 examples/web_research_demo.py --show-browser
+```
+
+A real GIF/screen recording should be captured from that command rather than represented as a simulated screenshot. This keeps the README evidence tied to an actual execution of the system.
+
+---
+
 ## What problem does Atlas solve?
 
 A normal LLM can generate an answer, but it does not automatically have a reliable execution layer.
