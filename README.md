@@ -74,7 +74,7 @@ Atlas
 - **Git & Chromium**
 
 ```bash
-git clone -b feature/browser-use https://github.com/Piardian/Atlas.git
+git clone https://github.com/Piardian/Atlas.git
 cd Atlas
 pip install -r requirements.txt
 playwright install chromium
