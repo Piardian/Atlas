@@ -1,4 +1,4 @@
-﻿# Environment & Secrets
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
@@ -36,6 +36,7 @@ env/
 # Workspaces & Agent outputs
 workspace/
 workspace_project/
+workspace_research/
 crypto_smc_bot/
 *.log
 

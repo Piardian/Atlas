@@ -1,56 +1,110 @@
-﻿# 🏛️ Atlas: Autonomous Multi-Agent Orchestrator CLI (v3.0)
+# 🏛️ Atlas: Autonomous Multi-Agent Orchestrator CLI
 
-**Atlas** is an advanced AI engineering and task orchestration framework powered by Google Gemini (AI Studio), CrewAI, and Aider. It features runtime dynamic agent synthesis and high-resilience API rate-limit protection.
+**Atlas** is a modular multi-agent orchestration framework powered by **Google Gemini (AI Studio)** and **CrewAI**, equipped with pluggable execution capabilities:
+- **Browser Capability (`tools/browser_tool.py`)**: Real browser automation powered by **Browser Use** & **Playwright Chromium** for autonomous web research, DOM navigation, and structured extraction.
+- **Code Execution Capability (`tools/aider_tool.py`)**: Local repository code generation and refactoring powered by **Aider CLI**.
+- **Cascading Model & Key Pool Shield (`tools/key_manager.py`)**: Automatic 4-key rotation and multi-tier model fallback on `429 RESOURCE_EXHAUSTED` errors.
 
 ---
 
-## 🎯 Key Capabilities
+## 🏗️ Architecture (`feature/browser-use`)
 
-### 1. 🧠 Dynamic Agent Factory (Dinamik Ajan Fabrikası)
-- **Zero Static Limits**: Rather than relying on hardcoded roles, the **Lead Architect** dynamically generates specialized agents tailored on-the-fly to the specific task domain (Finance/SMC, Web Full-Stack, Quantitative Engineering, Cybersecurity, Data Pipelines, etc.).
-- **Role Isolation**: Each generated agent receives custom goals, domain backstories, and precise file/tool boundaries.
+```text
+                           ATLAS ORCHESTRATOR
+                                   │
+                        User / Mission Prompt
+                                   │
+                                   ▼
+                     Dynamic Agent Factory (Lead)
+                    ┌──────────────┼──────────────┐
+                    │              │              │
+                 Research       Browser        Reviewer
+                  Agent          Agent          Agent
+                    │              │              │
+                    └──────┬───────┘              │
+                           ▼                      │
+                 BrowserAutomationTool            │
+              (Browser Use / Playwright)          │
+                           │                      │
+                     Real Chromium                │
+                 ┌─────────┴─────────┐            │
+                 │                   │            │
+            Web Search        DOM Extraction      │
+                 │                   │            │
+                 └─────────┬─────────┘            │
+                           ▼                      │
+                   Structured Result ─────────────┘
+                                                  │
+                                                  ▼
+                                            Final Report
+```
 
-### 2. 🛡️ Cascading Model & Key Pool Fallback (Kademeli Model & Anahtar Zırhı)
-Never stall on `429 RESOURCE_EXHAUSTED` or rate limit errors:
+### Separation of Concerns
+- **Atlas** = Multi-Agent Orchestrator (Mission planning, dynamic workforce synthesis, capability routing, verification).
+- **Browser Use (`BrowserAutomationTool`)** = Pluggable Browser Capability (`browser_tool.run(task="...")`).
+- **Aider (`AiderExecutionTool`)** = Pluggable Code Execution Capability (`aider_tool.run(instruction="...")`).
 
-| Tier | Primary | Secondary (Fallback) | Tertiary (Fallback) |
-|---|---|---|---|
-| **Lead Architect & Verifier** | `gemini-3.7-flash` (Keys 1→4) | `gemini-3.6-flash` (Keys 1→4) | `gemini-3.5-flash-lite` (Keys 1→4) |
-| **Parallel Specialized Agents** | `gemini-3.5-flash-lite` (Keys 1→4) | `gemini-3.1-flash-lite` (Keys 1→4) | `gemma-4-31b-it` (Keys 1→4) |
+---
 
-- Automatic rotation through an array of API keys.
-- Automatic downgrade to secondary model tiers if an entire key pool exhausts its quota, with cooldown management.
+## 📂 Project Structure
 
-### 3. 🛠️ Controlled Code Editing via Aider Integration
-- Dispatches granular file modifications and refactorings through Aider subprocess tooling for deterministic and auditable repository modifications.
+```text
+Atlas
+├── agents.py
+├── crew.py                      # Capability-aware closed-loop orchestrator
+├── dynamic_factory.py           # Runtime agent & tool synthesis (browser / aider)
+├── spec_expander.py             # Task mode detector (web_research / software_engineering / hybrid)
+├── critic_verifier.py           # AST, entrypoint & report verification
+├── main.py                      # Unified CLI entrypoint
+├── tools/
+│   ├── key_manager.py           # 4-key pool & cascading model router
+│   ├── aider_tool.py            # Code execution capability
+│   └── browser_tool.py          # Abstracted Browser Use / Playwright capability
+└── examples/
+    └── web_research_demo.py     # Internship PoC: AI Web Research Agent
+```
 
 ---
 
 ## 🚀 Quickstart
 
-### Prerequisites
-- Python 3.10+
-- Git
+### 1. Prerequisites & Installation
+- Python 3.11+
+- Git & Chromium (via Playwright)
 
-### Installation
 ```bash
-git clone https://github.com/Piardian/Atlas.git
+git clone -b feature/browser-use https://github.com/Piardian/Atlas.git
 cd Atlas
 pip install -r requirements.txt
+playwright install chromium
 cp .env.example .env
-# Fill in your GEMINI_USER_*_KEY values in .env
+# Add your GEMINI_USER_*_KEY values into .env
 ```
 
-### Usage
+### 2. Run Internship PoC: AI Web Research Agent
+Researches the top 5 AI companies in Turkey via real browser navigation, extracts their products and official contact details, verifies the findings through the Reviewer Agent, and outputs a structured Markdown report:
+
 ```bash
-# 1. Interactive Mode
-python main.py
+# Full Multi-Agent Orchestration (Atlas -> Research Agent -> Browser Agent -> Reviewer Agent)
+python examples/web_research_demo.py
 
-# 2. Direct Task Execution with Custom Workspace
-python main.py --prompt "Build a real-time SMC Liquidity & Fair Value Gap tracker using Binance WebSocket" --workspace ./crypto_smc_bot
+# Watch Chromium live in a visible browser window
+python examples/web_research_demo.py --show-browser
 
-# 3. Built-in Verification Demo
-python main.py --demo
+# Or via main CLI
+python main.py --browser-demo
+
+# Direct Capability Test (calls browser_tool.run(...) directly)
+python examples/web_research_demo.py --direct-tool
+```
+
+### 3. Run Custom Web Research or Software Engineering Missions
+```bash
+# Custom Web Research Mission
+python main.py --prompt "Türkiye'deki yapay zeka şirketlerini araştır. İlk 5 şirketi bul, web sitelerinden ürünlerini ve iletişim bilgilerini çıkar, tablo halinde raporla." --workspace ./workspace_research
+
+# Custom Software Engineering Mission (Aider Capability)
+python main.py --prompt "FastAPI ile JWT tabanlı görev yönetim mikroservisi geliştir" --workspace ./workspace_api
 ```
 
 ---

@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from crewai import Agent, Task, LLM
 import litellm
 from .tools.aider_tool import AiderExecutionTool
+from .tools.browser_tool import BrowserAutomationTool
 from .tools.key_manager import SmartFallbackRouter, ARCHITECT_CASCADE, WORKER_CASCADE
 
 # LiteLLM'in sessizce 20-30 dakika bekleyen sonsuz retry dongusunu KESINLIKLE DEVRE DISI BIRAK
@@ -36,48 +37,82 @@ def get_resilient_llm(tier: str = "worker", agent_idx: int = 0) -> LLM:
 
 class DynamicAgentFactory:
     """
-    Gelen gorevin alanina (Finans, Web, Veri Bilimi, Guvenlik vb.) gore
-    en uygun 5 uzman ajani ve gorevleri calisma aninda (runtime) dinamik ureten fabrika.
+    Gelen gorevin alanina (Web Research / Browser Automation, Finans, Web Full-Stack, Veri Bilimi vb.) gore
+    en uygun uzman ajanlari ve yeteneklerini (BrowserAutomationTool / AiderExecutionTool)
+    calisma aninda (runtime) dinamik ureten fabrika.
     """
 
-    def __init__(self, workspace_dir: str):
+    def __init__(self, workspace_dir: str, headless: bool = True):
         self.workspace_dir = workspace_dir
+        self.headless = headless
 
     def create_architect(self) -> Agent:
-        """En ust kademedeki Bas Mimar ajanini olusturur (3.7 -> 3.6 -> 3.5)."""
+        """En ust kademedeki Bas Mimar ajanini olusturur (3.8 -> 3.7 -> 3.6 -> 3.5)."""
         architect_llm = get_resilient_llm(tier="architect", agent_idx=0)
         return Agent(
             role="Lead System Architect & Dynamic Workforce Orchestrator",
             goal=(
-                "Kullanicinin talebini alanina (Finans/Trading, Web, CLI, Veri Analizi, Guvenlik vb.) gore analiz etmek, "
-                "en uygun 5 uzman rolu ve gorevlerini JSON formatinda dinamik olarak tasarlamak."
+                "Kullanicinin talebini alanina (Web Research, Finans/Trading, Web, CLI, Veri Analizi vb.) gore analiz etmek, "
+                "en uygun uzman rolleri, yetenekleri (browser / aider) ve gorevlerini JSON formatinda dinamik tasarlamak."
             ),
             backstory=(
-                "Sen her turlu yazilim disiplininde (Trading/SMC, Web Full-Stack, Veri Muhendisligi, "
-                "Mikroservisler) 20 yillik tecrubeye sahip bir Bas Mimarsin. Gelen gorevin tabiatina "
-                "gore en dogru uzmanliklari belirler ve isi kusursuz 5 paralel alt modüle bolersin."
+                "Sen her turlu yazilim ve otonom arastirma disiplininde 20 yillik tecrubeye sahip bir Bas Mimarsin. "
+                "Gelen gorevin tabiatina gore en dogru uzmanliklari ve araclari (Browser Use veya Aider) belirler, "
+                "isi kusursuz alt modullere bolersin."
             ),
             llm=architect_llm,
             verbose=True,
             allow_delegation=False,
         )
 
-    def parse_blueprint(self, blueprint_text: str, user_prompt: str) -> List[Dict[str, Any]]:
-        """Bas Mimar'in urettigi JSON planini ayiklar; format hatasi olursa akilli fallback uygular."""
+    def parse_blueprint(
+        self,
+        blueprint_text: str,
+        user_prompt: str,
+        task_type: str = "software_engineering",
+    ) -> List[Dict[str, Any]]:
+        """Bas Mimar'in urettigi JSON planini ayiklar; format hatasi olursa gorev tipine uygun akilli sablon uygular."""
         try:
             json_match = re.search(r"\{[\s\S]*\}", blueprint_text)
             if json_match:
                 data = json.loads(json_match.group(0))
-                if "agents" in data and len(data["agents"]) >= 3:
+                if "agents" in data and len(data["agents"]) >= 2:
                     return data["agents"]
         except Exception as e:
-            print(f"[DynamicFactory] JSON ayiklama uyarisi: {e}. Akilli genel sablon kullaniliyor.")
+            print(f"[DynamicFactory] JSON ayiklama uyarisi: {e}. Akilli '{task_type}' sablonu kullaniliyor.")
+
+        if task_type == "web_research":
+            return [
+                {
+                    "role": "Lead Web Research & Ecosystem Discovery Agent",
+                    "goal": f"Hedef ekosistemdeki kurumlari/kaynaklari ve resmi web adreslerini tespit etmek: {user_prompt}",
+                    "backstory": "Teknoloji ekosistemleri, sirket kesfi ve kaynak dogrulama konusunda uzman arastirmaci ajan.",
+                    "capabilities": ["browser"],
+                    "target_files": "research_discovery.md",
+                    "instruction": (
+                        f"Gorev kapsamindaki hedef sirketleri/kaynaklari ve resmi web sitesi adreslerini belirle, "
+                        f"tarayici araciyla ana sayfalarini dogrula: {user_prompt}"
+                    ),
+                },
+                {
+                    "role": "Deep Browser Extraction & Contact Intelligence Agent",
+                    "goal": f"Gercek tarayici (Browser Use) ile hedef web sitelerine gidip urunleri ve iletisim bilgilerini cikarmak: {user_prompt}",
+                    "backstory": "DOM analizi, urun katalogu cikarimi ve kurumsal iletisim verisi madenciliginde uzman tarayici ajani.",
+                    "capabilities": ["browser"],
+                    "target_files": "extracted_details.md",
+                    "instruction": (
+                        f"Tespit edilen sirketlerin resmi web sitelerini tarayici araciyla ziyaret et; "
+                        f"urunlerini, cozumlerini ve iletisim bilgilerini (e-posta, web, konum) detayli cikar: {user_prompt}"
+                    ),
+                },
+            ]
 
         return [
             {
                 "role": "Core Architecture & Data Specialist",
                 "goal": f"{user_prompt} icin gerekli veri yapilarini, modelleri ve semalari kodlamak.",
                 "backstory": "Veri yapilari ve temel modeller uzmani kidemli muhendis.",
+                "capabilities": ["aider"],
                 "target_files": "models.py database.py",
                 "instruction": f"Projenin temel veri modellerini ve semalarini olustur: {user_prompt}",
             },
@@ -85,6 +120,7 @@ class DynamicAgentFactory:
                 "role": "Core Logic & Algorithms Specialist",
                 "goal": f"{user_prompt} icin ana is mantigini, algoritmik hesaplamalari ve servisleri kodlamak.",
                 "backstory": "Yüksek performansli is mantigi, servis katmani ve algoritma gelistiricisi.",
+                "capabilities": ["aider"],
                 "target_files": "services.py logic.py",
                 "instruction": f"Projenin ana is mantigini ve servis fonksiyonlarini olustur: {user_prompt}",
             },
@@ -92,6 +128,7 @@ class DynamicAgentFactory:
                 "role": "Interface, CLI & Endpoints Specialist",
                 "goal": f"{user_prompt} icin API rotalarini, CLI veya arayuz kodlarini olusturmak.",
                 "backstory": "REST API, CLI ve modern arayuz mimarisi uzmani.",
+                "capabilities": ["aider"],
                 "target_files": "routers.py main.py",
                 "instruction": f"Projenin arayuz ve API katmanini olustur: {user_prompt}",
             },
@@ -99,6 +136,7 @@ class DynamicAgentFactory:
                 "role": "Quality Assurance & Unit Test Specialist",
                 "goal": f"{user_prompt} icin birim testleri ve matematiksel dogrulama testlerini yazmak.",
                 "backstory": "Kapsamli test mimarisi ve kenar durum guvenligi uzmani.",
+                "capabilities": ["aider"],
                 "target_files": "tests/test_core.py",
                 "instruction": f"Projenin tum modulleri icin pytest birim testlerini olustur: {user_prompt}",
             },
@@ -106,10 +144,54 @@ class DynamicAgentFactory:
                 "role": "DevOps, Automation & Documentation Specialist",
                 "goal": f"{user_prompt} icin requirements.txt, baslatici scriptler ve README.md hazirlamak.",
                 "backstory": "CI/CD, ortam yonetimi ve teknik dokumantasyon uzmani.",
+                "capabilities": ["aider"],
                 "target_files": "run.py requirements.txt README.md",
                 "instruction": f"Projenin tek komutla calismasini saglayan run.py ve dokumantasyonunu hazirla: {user_prompt}",
             },
         ]
+
+    def _resolve_agent_tools(
+        self,
+        spec: Dict[str, Any],
+        task_type: str,
+        agent_idx: int,
+        role_name: str,
+    ) -> List[Any]:
+        """Ajanin blueprint'teki yeteneklerine (capabilities) ve gorev tipine gore dogru araclari baglar."""
+        raw_caps = spec.get("capabilities", [])
+        if isinstance(raw_caps, str):
+            raw_caps = [raw_caps]
+        caps = [str(c).lower().strip() for c in raw_caps]
+
+        if not caps:
+            if task_type == "web_research":
+                caps = ["browser"]
+            elif task_type == "hybrid":
+                caps = ["browser", "aider"]
+            else:
+                caps = ["aider"]
+
+        tools_list: List[Any] = []
+        if "browser" in caps or "web" in caps or task_type == "web_research":
+            tools_list.append(
+                BrowserAutomationTool(
+                    default_working_dir=self.workspace_dir,
+                    tier="worker",
+                    agent_idx=agent_idx,
+                    agent_role=role_name,
+                    default_headless=self.headless,
+                )
+            )
+        if "aider" in caps or "code" in caps or (task_type == "software_engineering" and not tools_list):
+            tools_list.append(
+                AiderExecutionTool(
+                    default_working_dir=self.workspace_dir,
+                    tier="worker",
+                    agent_idx=agent_idx,
+                    agent_role=role_name,
+                )
+            )
+        return tools_list
 
     def build_dynamic_crew_components(
         self,
@@ -118,50 +200,61 @@ class DynamicAgentFactory:
         arch_spec: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Agent], List[Task], Agent, Task]:
         """
-        Dinamik blueprint'ten CrewAI Ajanlarini ve async_execution=True Task'larini olusturur.
-        arch_spec parametresi ile her ajana tam mimari baglam (context) enjekte eder.
+        Dinamik blueprint'ten CrewAI Ajanlarini ve Task'larini olusturur.
+        Gorev tipi 'web_research' ise BrowserAutomationTool odaklı araştırma ve tablo raporlama akışı kurar;
+        'software_engineering' ise AiderExecutionTool odaklı paralel kodlama akışı kurar.
         """
+        task_type = (arch_spec or {}).get("task_type", "software_engineering")
         parallel_agents: List[Agent] = []
         parallel_tasks: List[Task] = []
 
         spec_context_str = ""
         if arch_spec:
             spec_context_str = (
-                f"\n--- TEKNİK ŞARTNAME VE MİMARİ KISITLAR ---\n"
+                f"\n--- GÖREV ŞARTNAMESİ VE KISITLAR ---\n"
+                f"• Görev Tipi: {task_type}\n"
                 f"• Hedef Platform: {arch_spec.get('target_platform', 'Python')}\n"
-                f"• Olay Döngüsü Modeli: {arch_spec.get('event_loop_model', 'continuous')}\n"
-                f"• Zorunlu Uç Durumlar: {', '.join(arch_spec.get('mandatory_edge_cases', []))}\n"
-                f"-----------------------------------------\n"
+                f"• Zorunlu Kurallar: {', '.join(arch_spec.get('mandatory_edge_cases', []))}\n"
+                f"------------------------------------\n"
             )
 
-        for idx, spec in enumerate(agents_blueprint[:5]):
+        max_workers = 3 if task_type == "web_research" else 5
+        for idx, spec in enumerate(agents_blueprint[:max_workers]):
             role_name = spec.get("role", f"Specialist Agent #{idx+1}")
             goal = spec.get("goal", f"Gorevi basariyla tamamlamak: {user_prompt}")
-            backstory = spec.get("backstory", f"{role_name} alaninda uzman kidemli muhendis.")
+            backstory = spec.get("backstory", f"{role_name} alaninda uzman kidemli ajan.")
             target_files = spec.get("target_files", "")
             instruction = spec.get("instruction", f"{role_name} kapsamindaki gorevleri tamamla.")
 
             agent_llm = get_resilient_llm(tier="worker", agent_idx=idx)
-            aider_tool = AiderExecutionTool(
-                default_working_dir=self.workspace_dir,
-                tier="worker",
-                agent_idx=idx,
-                agent_role=role_name,
-            )
+            agent_tools = self._resolve_agent_tools(spec, task_type, idx, role_name)
 
             agent = Agent(
                 role=role_name,
                 goal=goal,
                 backstory=backstory,
                 llm=agent_llm,
-                tools=[aider_tool],
+                tools=agent_tools,
                 verbose=True,
                 allow_delegation=False,
             )
             parallel_agents.append(agent)
 
-            task = Task(
-                description=(
+            if task_type == "web_research":
+                task_desc = (
+                    f"GÖREVİN: {role_name}\n"
+                    f"{spec_context_str}\n"
+                    f"Kullanıcı Araştırma Talebi: {user_prompt}\n"
+                    f"Özel Talimat: {instruction}\n\n"
+                    f"KATI ARAŞTIRMA KURALLARI:\n"
+                    f"- 'Browser Automation & Web Research Tool' aracını kullanarak gerçek web sitelerini ziyaret et.\n"
+                    f"- Ziyaret edilen resmi web sitesi adreslerini (URL), şirket ürünlerini/hizmetlerini ve iletişim bilgilerini eksiksiz çıkar.\n"
+                    f"- Asla hayali şirket veya uydurma iletişim bilgisi üretme; doğrudan tarayıcı çıktısına dayan."
+                )
+                expected_out = f"{role_name} tarafından tarayıcı üzerinden toplanan doğrulanmış şirket, ürün ve iletişim bulguları."
+                is_async = False
+            else:
+                task_desc = (
                     f"GÖREVİN: {role_name}\n"
                     f"{spec_context_str}\n"
                     f"Kullanıcı Talebi: {user_prompt}\n"
@@ -171,50 +264,85 @@ class DynamicAgentFactory:
                     f"- Tanımladığın tüm işlem fonksiyonlarını ana tetikleyiciye (OnTick/main/run) bağla.\n"
                     f"- Aider Code Execution Tool aracını kullanarak kodları doğrudan yerel dosyalara işle.\n"
                     f"Hedef Çalışma Dizini: {self.workspace_dir}"
-                ),
-                expected_output=f"{role_name} tarafından yerel dosyalara yazılan kodlar ve Aider işlem özeti.",
+                )
+                expected_out = f"{role_name} tarafından yerel dosyalara yazılan kodlar ve Aider işlem özeti."
+                is_async = True
+
+            task = Task(
+                description=task_desc,
+                expected_output=expected_out,
                 agent=agent,
-                async_execution=True,
+                async_execution=is_async,
             )
             parallel_tasks.append(task)
 
-        # Lead Reviewer / Integrator Ajanı (3.7 -> 3.6 -> 3.5)
+        # Lead Reviewer / Synthesizer Ajanı
         reviewer_llm = get_resilient_llm(tier="reviewer", agent_idx=1)
-        reviewer_aider_tool = AiderExecutionTool(
-            default_working_dir=self.workspace_dir,
-            tier="reviewer",
-            agent_idx=1,
-            agent_role="Lead Reviewer",
-        )
 
-        reviewer_agent = Agent(
-            role="Lead Code Reviewer & Systems Integrator",
-            goal=(
-                "Paralel tamamlanan tum modulleri incelemek, import cakismalarini gidermek, "
-                "fonksiyonlarin ana donguye bagli oldugunu dogrulamak ve nihai entegrasyon raporunu sunmak."
-            ),
-            backstory=(
-                "Sen kod kalitesi, tutarlilik ve sistem entegrasyonundan sorumlu kidemli bas denetleyicisin. "
-                "Farkli uzmanlarin yazdigi kodlarin puruzsuz sekilde calismasini saglarsin."
-            ),
-            llm=reviewer_llm,
-            tools=[reviewer_aider_tool],
-            verbose=True,
-            allow_delegation=False,
-        )
+        if task_type == "web_research":
+            reviewer_agent = Agent(
+                role="Lead Research Reviewer & Structured Report Synthesizer",
+                goal=(
+                    "Araştırma ve Tarayıcı ajanlarından gelen tüm bulguları denetlemek, eksik veya tutarsız bilgileri "
+                    "ayıklamak ve kullanıcının istediği nihai yapılandırılmış Markdown tablo raporunu oluşturmak."
+                ),
+                backstory=(
+                    "Sen kurumsal araştırma kalitesi ve veri doğrulamasından sorumlu Baş Denetleyicisin. "
+                    "Tarayıcı ajanlarının topladığı ham web verilerini eksiksiz, kanıtlı ve net bir tabloya dönüştürürsün."
+                ),
+                llm=reviewer_llm,
+                tools=[],
+                verbose=True,
+                allow_delegation=False,
+            )
 
-        review_task = Task(
-            description=(
-                f"Tüm paralel uzmanların yazdığı kodları incele:\n"
-                f"{spec_context_str}\n"
-                f"1. Modüller arasındaki import ve veri uyumunu denetle.\n"
-                f"2. Tanımlanan fonksiyonların (örn. ExecuteNewsOrder, AsymmetricEngine) ana döngüye çağrıldığından emin ol.\n"
-                f"3. Eksik veya çelişkili bir parça varsa Aider ile düzelt.\n"
-                f"4. Nihai sistem entegrasyon özetini raporla.\n"
-                f"Hedef Çalışma Dizini: {self.workspace_dir}"
-            ),
-            expected_output="Entegrasyon denetimi raporu ve düzeltme özeti.",
-            agent=reviewer_agent,
-        )
+            review_task = Task(
+                description=(
+                    f"Araştırma ajanlarının topladığı tüm web verilerini incele ve doğrula:\n"
+                    f"Kullanıcı Talebi: {user_prompt}\n\n"
+                    f"1. Tüm hedef şirketlerin/kaynakların isimlerini, resmi web sitelerini, ana yapay zeka ürünlerini ve iletişim bilgilerini kontrol et.\n"
+                    f"2. Sonuçları hem özet Markdown tablosu (| # | Şirket Adı | Web Sitesi | Ürünler & Çözümler | İletişim Bilgileri |) "
+                    f"hem de şirket bazlı detaylı alt başlıklar halinde Türkçe olarak raporla.\n"
+                    f"3. Raporun sonunda ziyaret edilen kaynak URL'leri kanıt olarak listele."
+                ),
+                expected_output="Markdown tablosu ve detaylı şirket profillerini içeren doğrulanmış nihai araştırma raporu.",
+                agent=reviewer_agent,
+                context=parallel_tasks,
+            )
+        else:
+            reviewer_aider_tool = AiderExecutionTool(
+                default_working_dir=self.workspace_dir,
+                tier="reviewer",
+                agent_idx=1,
+                agent_role="Lead Reviewer",
+            )
+            reviewer_agent = Agent(
+                role="Lead Code Reviewer & Systems Integrator",
+                goal=(
+                    "Paralel tamamlanan tum modulleri incelemek, import cakismalarini gidermek, "
+                    "fonksiyonlarin ana donguye bagli oldugunu dogrulamak ve nihai entegrasyon raporunu sunmak."
+                ),
+                backstory=(
+                    "Sen kod kalitesi, tutarlilik ve sistem entegrasyonundan sorumlu kidemli bas denetleyicisin. "
+                    "Farkli uzmanlarin yazdigi kodlarin puruzsuz sekilde calismasini saglarsin."
+                ),
+                llm=reviewer_llm,
+                tools=[reviewer_aider_tool],
+                verbose=True,
+                allow_delegation=False,
+            )
+            review_task = Task(
+                description=(
+                    f"Tüm paralel uzmanların yazdığı kodları incele:\n"
+                    f"{spec_context_str}\n"
+                    f"1. Modüller arasındaki import ve veri uyumunu denetle.\n"
+                    f"2. Tanımlanan fonksiyonların ana döngüye çağrıldığından emin ol.\n"
+                    f"3. Eksik veya çelişkili bir parça varsa Aider ile düzelt.\n"
+                    f"4. Nihai sistem entegrasyon özetini raporla.\n"
+                    f"Hedef Çalışma Dizini: {self.workspace_dir}"
+                ),
+                expected_output="Entegrasyon denetimi raporu ve düzeltme özeti.",
+                agent=reviewer_agent,
+            )
 
         return parallel_agents, parallel_tasks, reviewer_agent, review_task

@@ -23,7 +23,6 @@ try:
     from rich.console import Console
     from rich.panel import Panel
     from rich.markdown import Markdown
-    from rich.table import Table
     console = Console(force_terminal=True, legacy_windows=False)
 except Exception:
     console = None
@@ -32,8 +31,8 @@ except Exception:
 def print_banner():
     banner_text = """
 ===============================================================
-   Google AI Studio + CrewAI + Aider Multi-Agent CLI (v3.0)
-   Dynamic Agent Factory & Cascading Model Shield
+   🏛️ ATLAS: Autonomous Multi-Agent Orchestrator CLI
+   Dynamic Agent Factory | Browser Use | Aider | Gemini Shield
 ===============================================================
     """
     if console:
@@ -49,7 +48,7 @@ def check_prerequisites():
     """Gerekli Google AI Studio Gemini anahtarlarini dogrular."""
     router = SmartFallbackRouter()
     keys = router.get_all_keys()
-    
+
     if not keys:
         msg = (
             "[!] UYARI: Hicbir Gemini API anahtari bulunamadi!\n\n"
@@ -68,23 +67,33 @@ def check_prerequisites():
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Google AI Studio (Gemini) + CrewAI + Aider Dinamik Ajan CLI (v3.0)"
+        description="Atlas: Google AI Studio (Gemini) + CrewAI + Browser Use + Aider Dinamik Ajan CLI"
     )
     parser.add_argument(
         "--prompt", "-p",
         type=str,
-        help="Gelistirilmesini veya denetlenmesini istediginiz gorevin detayli aciklamasi.",
+        help="Yurutulmesini istediginiz arastirma veya yazilim gelistirme gorevi.",
     )
     parser.add_argument(
         "--workspace", "-w",
         type=str,
         default=os.getenv("TARGET_WORKSPACE", "./workspace_project"),
-        help="Kodlarin yazilacagi yerel calisma dizini (varsayilan: ./workspace_project).",
+        help="Ciktilarin ve raporlarin yazilacagi calisma dizini (varsayilan: ./workspace_project).",
     )
     parser.add_argument(
         "--demo",
         action="store_true",
         help="Ornek bir Finans / SMC Matematiksel Denetim gorevi calistirir.",
+    )
+    parser.add_argument(
+        "--browser-demo",
+        action="store_true",
+        help="Staj PoC: Turkiye'deki Yapay Zeka Sirketlerini Browser Use ile arastirip tablo halinde raporlar.",
+    )
+    parser.add_argument(
+        "--show-browser",
+        action="store_true",
+        help="Tarayiciyi gorunur pencerede (headless=False) acar.",
     )
     return parser.parse_args()
 
@@ -99,7 +108,13 @@ def main():
     router = SmartFallbackRouter()
     keys = router.get_all_keys()
 
-    if args.demo:
+    if args.browser_demo:
+        prompt = (
+            "Türkiye'deki yapay zeka şirketlerini araştır. "
+            "İlk 5 şirketi bul (örneğin Vispera, CBOT, Tazi AI, Mindsite, Intenseye vb. resmi siteleri üzerinden), "
+            "web sitelerinden ana ürünlerini ve iletişim bilgilerini çıkar, tablo halinde raporla."
+        )
+    elif args.demo:
         prompt = (
             "SMC (Smart Money Concepts) ve Piyasa Yapisi (Market Structure) algoritmalarinin matematiksel denetimini yap.\n"
             "1. Swing High/Low (Fraktal) tepe-dip algoritmalarinda indis kaymasi ve wick vs body kurallarini incele.\n"
@@ -113,7 +128,7 @@ def main():
     else:
         if console:
             try:
-                console.print("[bold yellow]Lutfen gorev veya proje aciklamasini girin:[/bold yellow]")
+                console.print("[bold yellow]Lutfen arastirma veya gelistirme gorevini girin:[/bold yellow]")
                 prompt = console.input("[bold green]> [/bold green]").strip()
             except Exception:
                 prompt = input("Gorev: ").strip()
@@ -133,40 +148,43 @@ def main():
     config_info = (
         f"Calisma Alani: {workspace_path}\n"
         f"Aktif Gemini API Anahtari: {len(keys)} Adet (Key Pool Aktif)\n"
-        f"Ajan Modu: Dinamik Ajan Uretimi (Dynamic Agent Factory)\n"
-        f"Bas Mimar Kademesi: {arch_cascade_str} (Otomatik Gecis)\n"
-        f"Calisanlar Kademesi: {worker_cascade_str} (Otomatik Gecis)"
+        f"Yetenekler (Capabilities): Browser Use (Chromium) + Aider CLI\n"
+        f"Bas Mimar Kademesi: {arch_cascade_str}\n"
+        f"Calisanlar Kademesi: {worker_cascade_str}"
     )
 
     if console:
         try:
-            console.print(Panel(config_info, title="[cyan]Multi-Agent v3.0 Calisma Ortami[/cyan]", border_style="cyan"))
+            console.print(Panel(config_info, title="[cyan]Atlas Calisma Ortami[/cyan]", border_style="cyan"))
         except Exception:
             print("\n" + config_info + "\n")
     else:
         print("\n" + config_info + "\n")
 
-    orchestrator = AiderCrewOrchestrator(workspace_dir=str(workspace_path))
-    
+    orchestrator = AiderCrewOrchestrator(
+        workspace_dir=str(workspace_path),
+        headless=not args.show_browser,
+    )
+
     try:
         result = orchestrator.kickoff(user_prompt=prompt)
-        
+
         if console:
             try:
                 console.print("\n")
                 console.print(Panel(
                     Markdown(str(result)),
-                    title="[green]Coklu Ajan Gelistirme/Denetim Sureci Basariyla Tamamlandi[/green]",
+                    title="[green]Atlas Otonom Gorev Raporu[/green]",
                     border_style="green",
                 ))
             except Exception:
-                print("\nCOKLU AJAN SUREC RAPORU:\n" + str(result))
+                print("\nATLAS GOREV RAPORU:\n" + str(result))
         else:
-            print("\n" + "="*60)
-            print("COKLU AJAN SUREC RAPORU:")
-            print("="*60)
+            print("\n" + "=" * 60)
+            print("ATLAS GOREV RAPORU:")
+            print("=" * 60)
             print(result)
-            
+
     except KeyboardInterrupt:
         print("\n[!] Islem kullanici tarafindan durduruldu.")
     except Exception as e:

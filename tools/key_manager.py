@@ -7,20 +7,22 @@ from dotenv import load_dotenv
 
 FALLBACK_ENV_PATH = Path(r"C:\Users\piard\Downloads\orkestrat-r-test9-fixed\agent-core\.env")
 
-# 1. KURAL: Bas Mimar 3.8 -> 3.7 -> 3.6 -> 3.5
+# 1. KURAL: Bas Mimar (En yuksek erisilebilirlik ve hiz sirasiyla 3.7 -> 3.6 -> 3.8 -> 3.1 -> Gemma 4)
 ARCHITECT_CASCADE = [
-    "gemini/gemini-3.8-flash",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
-    "gemini/gemini-3.5-flash-lite",
+    "gemini/gemini-3.8-flash",
+    "gemini/gemini-3.1-flash-lite",
+    "gemini/gemma-4-26b-a4b-it",
 ]
 
-# 2. KURAL: Calisanlar 3.8 Flash Lite -> 3.5 Flash Lite -> 3.1 Flash Lite -> Gemma 4
+# 2. KURAL: Calisanlar (Yuksek TPM limitli 3.6/3.7 Flash -> 3.1-flash-lite -> Gemma 4 26B)
 WORKER_CASCADE = [
-    "gemini/gemini-3.8-flash-lite",
-    "gemini/gemini-3.5-flash-lite",
+    "gemini/gemini-3.6-flash",
+    "gemini/gemini-3.7-flash",
     "gemini/gemini-3.1-flash-lite",
-    "gemini/gemma-4-31b-it",
+    "gemini/gemma-4-26b-a4b-it",
+    "gemini/gemini-3.5-flash-lite",
 ]
 
 
@@ -80,10 +82,19 @@ class SmartFallbackRouter:
 
     def mark_exhausted(self, model: str, key: str, reason: str = "") -> None:
         with self._lock:
-            pair = (model, key)
-            self.exhausted_pairs[pair] = time.time()
-            masked_key = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
-            print(f"\n[Rate-Limit Zırhı] ⚠️ {model} modeli için Key ({masked_key}) 429/Kota sınırına ulaştı!")
+            now = time.time()
+            r_low = reason.lower()
+            if any(k in r_low for k in ["503", "504", "404", "unavailable", "high demand", "not_found"]):
+                # 503 anlik sunucu yogunlugudur; sadece 8 saniye pasife al (180sn degil)
+                short_expiry = now - self.cooldown_seconds + 8.0
+                for k in self.keys:
+                    self.exhausted_pairs[(model, k)] = short_expiry
+                print(f"\n[Model Yoğunluk Zırhı] 🔄 {model} sunucusu yoğun (503), sıradaki modele geçiliyor!")
+            else:
+                pair = (model, key)
+                self.exhausted_pairs[pair] = now
+                masked_key = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+                print(f"\n[Rate-Limit Zırhı] ⚠️ {model} modeli için Key ({masked_key}) 429/Kota sınırına ulaştı!")
 
     def is_exhausted(self, model: str, key: str) -> bool:
         pair = (model, key)
@@ -99,6 +110,7 @@ class SmartFallbackRouter:
         Model kademesinde:
         Once Model 1 icin Key 1 -> Key 2 -> Key 3 -> Key 4 denenir.
         Model 1 tum anahtarlarda biterse Model 2'ye (Key 1 -> 2 -> 3 -> 4) gecilir.
+        Eger tum kademeler gecici olarak pasifse, en eski kaydi sifirlayip kesintisiz devam eder.
         """
         if not self.keys:
             raise ValueError("Hicbir Google Gemini API anahtari tanimli degil!")
@@ -106,19 +118,25 @@ class SmartFallbackRouter:
         cascade = ARCHITECT_CASCADE if tier.lower() in ["architect", "reviewer", "lead"] else WORKER_CASCADE
 
         with self._lock:
+            num_keys = len(self.keys)
+            ordered_keys = [self.keys[(preferred_agent_idx + i) % num_keys] for i in range(num_keys)]
+
             for model in cascade:
-                num_keys = len(self.keys)
-                ordered_keys = [self.keys[(preferred_agent_idx + i) % num_keys] for i in range(num_keys)]
-                
                 for key in ordered_keys:
                     if not self.is_exhausted(model, key):
                         return model, key
 
-        tier_name = "Baş Mimar (3.8 -> 3.7 -> 3.6 -> 3.5)" if tier.lower() in ["architect", "reviewer"] else "Çalışanlar (3.8 -> 3.5 -> 3.1 -> Gemma 4)"
-        raise RuntimeError(
-            f"🛑 DIKKAT: {tier_name} kademesindeki tum API anahtarlarinin kotalari tukendi!\n"
-            f"Lutfen kotalarinizin sifirlanmasini bekleyin veya yeni bir Gemini API anahtari ekleyin."
-        )
+            # Tum kademeler gecici pasifse en erken suresi dolacak olan cifti serbest birak
+            best_pair = (cascade[0], ordered_keys[0])
+            oldest_ts = float("inf")
+            for model in cascade:
+                for key in ordered_keys:
+                    ts = self.exhausted_pairs.get((model, key), 0.0)
+                    if ts < oldest_ts:
+                        oldest_ts = ts
+                        best_pair = (model, key)
+            self.exhausted_pairs.pop(best_pair, None)
+            return best_pair
 
     def get_all_keys(self) -> List[str]:
         return list(self.keys)
