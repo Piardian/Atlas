@@ -70,7 +70,7 @@ class BaseBrowserBackend(ABC):
 class BrowserUseBackend(BaseBrowserBackend):
     """
     Acik kaynak 'browser-use' kutuphanesini SmartFallbackRouter (4'lu Gemini anahtar havuzu)
-    ile calistiran birincil tarayici backend'i.
+    ile calistiran BIRINCIL (default) tarayici backend'i.
     """
 
     def __init__(self, tier: str = "worker", agent_idx: int = 0):
@@ -82,20 +82,68 @@ class BrowserUseBackend(BaseBrowserBackend):
     def backend_name(self) -> str:
         return "browser-use"
 
-    def _build_browser_use_gemini_llm(self, model_name: str, api_key: str):
+    def _create_rotating_browser_use_llm(self):
+        """
+        browser_use.ChatGoogle sinifini genisleten ve her adimda 503/429 hatasi alinirsa
+        SmartFallbackRouter uzerinden aninda siradaki Gemini anahtarina/modeline gecen sarmalayici.
+        """
         from browser_use import ChatGoogle
 
-        clean_model = model_name.replace("gemini/", "")
-        # gemma modelleri structured output desteklemedigi icin supports_structured_output=False yapilir
-        supports_struct = not clean_model.startswith("gemma")
-        return ChatGoogle(
-            model=clean_model,
-            api_key=api_key,
-            temperature=0.1,
-            supports_structured_output=supports_struct,
-            include_system_in_user= not supports_struct,
-            max_retries=1,
-        )
+        router = self.router
+        tier = self.tier
+        base_idx = self.agent_idx
+
+        class AtlasRotatingChatGoogle(ChatGoogle):
+            def __init__(self_llm):
+                m, k = router.get_best_model_and_key(tier=tier, preferred_agent_idx=base_idx)
+                clean_m = m.replace("gemini/", "")
+                if clean_m.startswith("gemma"):
+                    clean_m = "gemini-3.6-flash"
+                super().__init__(
+                    model=clean_m,
+                    api_key=k,
+                    temperature=0.1,
+                    supports_structured_output=True,
+                    max_retries=1,
+                )
+                self_llm.last_used_model = clean_m
+
+            async def ainvoke(self_llm, messages, output_format=None, **kwargs):
+                last_exc = None
+                for attempt in range(8):
+                    m, k = router.get_best_model_and_key(
+                        tier=tier, preferred_agent_idx=base_idx + attempt
+                    )
+                    clean_m = m.replace("gemini/", "")
+                    supports_struct = not clean_m.startswith("gemma")
+                    delegate = ChatGoogle(
+                        model=clean_m,
+                        api_key=k,
+                        temperature=0.1,
+                        supports_structured_output=supports_struct,
+                        include_system_in_user=not supports_struct,
+                        max_retries=1,
+                    )
+                    try:
+                        res = await delegate.ainvoke(messages, output_format=output_format, **kwargs)
+                        self_llm.last_used_model = clean_m
+                        return res
+                    except Exception as e:
+                        last_exc = e
+                        err_s = str(e).lower()
+                        if any(
+                            w in err_s
+                            for w in [
+                                "429", "503", "504", "404", "unavailable", "not_found",
+                                "quota", "resource_exhausted", "rate", "high demand", "overloaded",
+                            ]
+                        ):
+                            router.mark_exhausted(m, k, reason=f"BrowserUse Step LLM: {err_s[:50]}")
+                            continue
+                        raise e
+                raise last_exc
+
+        return AtlasRotatingChatGoogle()
 
     async def _run_async(
         self,
@@ -103,18 +151,24 @@ class BrowserUseBackend(BaseBrowserBackend):
         start_url: Optional[str],
         headless: bool,
         max_steps: int,
-        model_name: str,
-        api_key: str,
     ) -> BrowserTaskResult:
         from browser_use import Agent as BrowserUseAgent, BrowserProfile, BrowserSession
 
         start_ts = time.time()
-        full_task = task
-        if start_url:
-            full_task = f"Navigate first to {start_url} and then complete the task: {task}"
+        helper = PlaywrightSmartBackend(tier=self.tier, agent_idx=self.agent_idx)
+        target_urls = helper._plan_urls_with_llm(task, start_url)
+        first_url = start_url or (target_urls[0] if target_urls else "https://vispera.co")
+        urls_list_str = ", ".join(target_urls[:5])
 
-        llm = self._build_browser_use_gemini_llm(model_name, api_key)
-        fallback_llm = self._build_browser_use_gemini_llm("gemma-4-26b-a4b-it", api_key)
+        full_task = (
+            f"Navigate first to {first_url}. "
+            f"Target websites to inspect for this mission: {urls_list_str}. "
+            f"Do NOT waste steps creating or editing todo.md files; directly navigate to each website, extract their core AI products/solutions and official contact details (emails, contact URLs), "
+            f"and finish by calling 'done' with a comprehensive Turkish Markdown report including a comparison table covering all {len(target_urls)} targets. "
+            f"Mission details: {task}"
+        )
+
+        rotating_llm = self._create_rotating_browser_use_llm()
 
         browser_session = None
         try:
@@ -122,45 +176,100 @@ class BrowserUseBackend(BaseBrowserBackend):
             browser_session = BrowserSession(browser_profile=profile)
             bu_agent = BrowserUseAgent(
                 task=full_task,
-                llm=llm,
-                fallback_llm=fallback_llm,
+                llm=rotating_llm,
+                page_extraction_llm=rotating_llm,
+                fallback_llm=rotating_llm,
                 browser_session=browser_session,
                 use_vision=False,
+                use_judge=False,
+                flash_mode=True,
+                max_clickable_elements_length=15000,
             )
-        except Exception:
-            bu_agent = BrowserUseAgent(task=full_task, llm=llm, use_vision=False)
+        except Exception as init_err:
+            raise RuntimeError(f"BrowserUseAgent baslatilamadi: {init_err}") from init_err
 
         try:
             history = await bu_agent.run(max_steps=max_steps)
 
-            is_done = False
-            if hasattr(history, "is_done") and callable(history.is_done):
-                is_done = bool(history.is_done())
-
             final_res = ""
             visited: List[str] = []
+            extracted_chunks: List[str] = []
+
             if hasattr(history, "final_result") and callable(history.final_result):
                 final_res = str(history.final_result() or "").strip()
 
             if hasattr(history, "urls") and callable(history.urls):
-                visited = [
+                visited = list(dict.fromkeys(
                     str(u) for u in (history.urls() or [])
                     if u and str(u) != "about:blank"
+                ))
+
+            if hasattr(history, "extracted_content") and callable(history.extracted_content):
+                extracted_chunks = [
+                    str(c).strip() for c in (history.extracted_content() or [])
+                    if c and str(c).strip()
                 ]
 
-            if not is_done or len(final_res) < 120:
+            if not visited and not final_res and not extracted_chunks:
                 errs = []
                 if hasattr(history, "errors") and callable(history.errors):
                     errs = [str(e) for e in (history.errors() or []) if e]
-                err_msg = "; ".join(errs) if errs else "BrowserUseAgent gorevi tam raporlamadan durdu."
+                err_msg = "; ".join(errs) if errs else "BrowserUseAgent hicbir URL ziyaret edemedi."
                 raise RuntimeError(err_msg)
 
+            # Eger BrowserUseAgent tum hedef siteleri gezmeden max_steps sinirina ulastiysa veya
+            # ciktiyi henuz tam Markdown tablosuna donusturmediyse, kalan sitelerin DOM ozetleriyle
+            # BrowserUseAgent bulgularini birlestirerek eksiksiz tablo raporu olustur.
+            visited_domains = {urllib.parse.urlparse(u).netloc.replace("www.", "").lower() for u in visited if u.startswith("http")}
+            target_domains = {urllib.parse.urlparse(u).netloc.replace("www.", "").lower() for u in target_urls if u.startswith("http")}
+            all_targets_visited = len(visited_domains.intersection(target_domains)) >= len(target_domains)
+            has_complete_table = ("|" in final_res and "---" in final_res and len(final_res) >= 250 and all_targets_visited)
+            structured_snapshots: List[Dict[str, Any]] = []
+
+            if not has_complete_table:
+                # BrowserUseAgent'in gezdigi ve kalan hedef sitelerin DOM verilerini zenginlestir
+                extra_visited, structured_snapshots = await asyncio.to_thread(
+                    helper._scrape_with_playwright, target_urls, True
+                )
+                for ev in extra_visited:
+                    if ev not in visited:
+                        visited.append(ev)
+
+                bu_notes = "\n".join(extracted_chunks[-4:] + ([final_res] if final_res else [])).strip()
+                if bu_notes and structured_snapshots:
+                    structured_snapshots[0]["browser_use_agent_notes"] = bu_notes[:800]
+
+                final_res = await asyncio.to_thread(helper._synthesize_with_llm, task, structured_snapshots)
+
+            # Eger kullanici buldugu siteleri tarayicida acip karsisina getirmesini istediyse
+            t_low = task.lower()
+            if any(
+                phrase in t_low
+                for phrase in ["karşıma getir", "karsima getir", "tarayıcıdan aç", "tarayicidan ac", "tarayıcıda aç", "ekranda aç"]
+            ):
+                urls_to_open: List[str] = []
+                for snap in structured_snapshots:
+                    for lk in snap.get("relevant_links", []):
+                        href = lk.get("href", "")
+                        if href.startswith("http") and "/jobs/view/" in href.lower():
+                            if href not in urls_to_open:
+                                urls_to_open.append(href)
+                if not urls_to_open:
+                    urls_to_open = [u for u in visited if "github.com" not in u and "contact" not in u][:3]
+                for open_u in urls_to_open[:3]:
+                    try:
+                        webbrowser.open_new_tab(open_u)
+                    except Exception:
+                        pass
+
+            active_model = getattr(rotating_llm, "last_used_model", "gemini-3.1-flash-lite")
             return BrowserTaskResult(
                 success=True,
-                backend_used=f"browser-use ({model_name.replace('gemini/', '')})",
+                backend_used=f"browser-use ({active_model})",
                 task=task,
                 visited_urls=visited,
                 extracted_content=final_res,
+                structured_data=structured_snapshots if structured_snapshots else None,
                 elapsed_seconds=time.time() - start_ts,
             )
         finally:
@@ -181,40 +290,25 @@ class BrowserUseBackend(BaseBrowserBackend):
         task: str,
         start_url: Optional[str] = None,
         headless: bool = True,
-        max_steps: int = 8,
+        max_steps: int = 12,
     ) -> BrowserTaskResult:
-        max_attempts = 2
-        last_err = ""
-
-        for _ in range(max_attempts):
-            model, api_key = self.router.get_best_model_and_key(
-                tier=self.tier, preferred_agent_idx=self.agent_idx
-            )
-            try:
-                return asyncio.run(
-                    self._run_async(
-                        task=task,
-                        start_url=start_url,
-                        headless=headless,
-                        max_steps=max_steps,
-                        model_name=model,
-                        api_key=api_key,
-                    )
+        try:
+            return asyncio.run(
+                self._run_async(
+                    task=task,
+                    start_url=start_url,
+                    headless=headless,
+                    max_steps=max_steps,
                 )
-            except Exception as e:
-                err_str = str(e)
-                last_err = err_str
-                if any(k in err_str.lower() for k in ["429", "404", "503", "504", "unavailable", "not_found", "quota", "resource_exhausted", "rate", "high demand"]):
-                    self.router.mark_exhausted(model, api_key, reason=f"BrowserUse Err: {err_str[:60]}")
-                    continue
-                break
+            )
+        except Exception as e:
+            return BrowserTaskResult(
+                success=False,
+                backend_used=self.backend_name,
+                task=task,
+                error=str(e),
+            )
 
-        return BrowserTaskResult(
-            success=False,
-            backend_used=self.backend_name,
-            task=task,
-            error=last_err,
-        )
 
 
 class PlaywrightSmartBackend(BaseBrowserBackend):
@@ -701,7 +795,7 @@ class BrowserAutomationTool(BaseTool):
     agent_idx: int = 0
     agent_role: str = "browser_researcher"
     default_headless: bool = True
-    preferred_backend: str = "auto"  # "auto" | "browser-use" | "playwright"
+    preferred_backend: str = "browser-use"  # "browser-use" (default) | "auto" | "playwright"
 
     def __init__(
         self,
@@ -710,7 +804,7 @@ class BrowserAutomationTool(BaseTool):
         agent_idx: int = 0,
         agent_role: str = "browser_researcher",
         default_headless: bool = True,
-        preferred_backend: str = "auto",
+        preferred_backend: str = "browser-use",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -721,13 +815,18 @@ class BrowserAutomationTool(BaseTool):
         self.default_headless = default_headless
         self.preferred_backend = preferred_backend
 
-    def _record_telemetry(self, result: BrowserTaskResult) -> None:
-        """Her tarayici gorevinin kanitlarini (URL'ler, sure, backend) calisma dizinine kaydeder."""
+    def _record_telemetry(
+        self,
+        result: BrowserTaskResult,
+        fallback_triggered: bool = False,
+        fallback_reason: Optional[str] = None,
+    ) -> None:
+        """Her tarayici gorevinin kanitlarini (URL'ler, sure, backend, varsa fallback nedeni) calisma dizinine kaydeder."""
         try:
             work_dir = Path(self.default_working_dir).resolve()
             work_dir.mkdir(parents=True, exist_ok=True)
             telemetry_file = work_dir / "browser_telemetry.jsonl"
-            entry = {
+            entry: Dict[str, Any] = {
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "agent_role": self.agent_role,
                 "backend_used": result.backend_used,
@@ -735,11 +834,14 @@ class BrowserAutomationTool(BaseTool):
                 "task": result.task,
                 "visited_urls": result.visited_urls,
                 "elapsed_seconds": round(result.elapsed_seconds, 2),
+                "fallback_triggered": fallback_triggered,
             }
+            if fallback_reason:
+                entry["fallback_reason"] = fallback_reason
             with open(telemetry_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
+        except Exception as tel_err:
+            print(f"[BrowserAutomationTool] Telemetri kayit uyarisi: {tel_err}")
 
     def _run(
         self,
@@ -749,21 +851,38 @@ class BrowserAutomationTool(BaseTool):
         **kwargs,
     ) -> str:
         use_headless = self.default_headless if headless is None else headless
+        fallback_reason: Optional[str] = None
 
-        # 1. Eger acikca 'browser-use' secildiyse veya tekil URL etkilesimi varsa BrowserUseBackend calistir
-        if self.preferred_backend == "browser-use" or (self.preferred_backend == "auto" and start_url):
+        # 1. Birincil (Default) Motor: BrowserUseBackend (browser-use + Chromium)
+        if self.preferred_backend in ("browser-use", "auto"):
             try:
                 import browser_use  # noqa: F401
                 bu_backend = BrowserUseBackend(tier=self.tier, agent_idx=self.agent_idx)
                 res = bu_backend.execute(task=task, start_url=start_url, headless=use_headless)
                 if res.success and res.extracted_content.strip():
-                    self._record_telemetry(res)
+                    self._record_telemetry(res, fallback_triggered=False)
                     return res.to_summary_text()
-            except Exception:
-                pass
+                fallback_reason = res.error or "BrowserUseBackend bos veya tamamlanmamis cikti dondurdu."
+                print(
+                    f"⚠️ [BrowserAutomationTool] BrowserUseBackend tamamlanamadi ({fallback_reason}). "
+                    f"PlaywrightSmartBackend fallback devreye aliniyor..."
+                )
+            except Exception as bu_exc:
+                fallback_reason = f"{type(bu_exc).__name__}: {bu_exc}"
+                print(
+                    f"⚠️ [BrowserAutomationTool] BrowserUseBackend istisna firlatti ({fallback_reason}). "
+                    f"PlaywrightSmartBackend fallback devreye aliniyor..."
+                )
 
-        # 2. Coklu site arastirma ve kesintisiz DOM cikarimi icin PlaywrightSmartBackend
+        # 2. Yedek (Fallback) Motor: PlaywrightSmartBackend
         pw_backend = PlaywrightSmartBackend(tier=self.tier, agent_idx=self.agent_idx)
         res = pw_backend.execute(task=task, start_url=start_url, headless=use_headless)
-        self._record_telemetry(res)
+        if fallback_reason:
+            res.error = f"[Fallback Sebebi: {fallback_reason}]"
+        self._record_telemetry(
+            res,
+            fallback_triggered=bool(fallback_reason),
+            fallback_reason=fallback_reason,
+        )
         return res.to_summary_text()
+

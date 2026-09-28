@@ -7,22 +7,22 @@ from dotenv import load_dotenv
 
 FALLBACK_ENV_PATH = Path(r"C:\Users\piard\Downloads\orkestrat-r-test9-fixed\agent-core\.env")
 
-# 1. KURAL: Bas Mimar (En yuksek erisilebilirlik ve hiz sirasiyla 3.7 -> 3.6 -> 3.8 -> 3.1 -> Gemma 4)
+# 1. KURAL: Bas Mimar (En yuksek erisilebilirlik ve hiz sirasiyla 3.1-flash-lite -> 3.7 -> 3.6 -> 3.8 -> Gemma 4)
 ARCHITECT_CASCADE = [
+    "gemini/gemini-3.1-flash-lite",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.8-flash",
-    "gemini/gemini-3.1-flash-lite",
     "gemini/gemma-4-26b-a4b-it",
 ]
 
-# 2. KURAL: Calisanlar (Yuksek TPM limitli 3.6/3.7 Flash -> 3.1-flash-lite -> Gemma 4 26B)
+# 2. KURAL: Calisanlar ve BrowserUse Ajanlari (Yuksek gunluk kotali ve dusuk gecikmeli 3.1-flash-lite -> 3.5-flash-lite -> 3.6 -> 3.7 -> Gemma 4)
 WORKER_CASCADE = [
+    "gemini/gemini-3.1-flash-lite",
+    "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.7-flash",
-    "gemini/gemini-3.1-flash-lite",
     "gemini/gemma-4-26b-a4b-it",
-    "gemini/gemini-3.5-flash-lite",
 ]
 
 
@@ -85,11 +85,11 @@ class SmartFallbackRouter:
             now = time.time()
             r_low = reason.lower()
             if any(k in r_low for k in ["503", "504", "404", "unavailable", "high demand", "not_found"]):
-                # 503 anlik sunucu yogunlugudur; sadece 8 saniye pasife al (180sn degil)
-                short_expiry = now - self.cooldown_seconds + 8.0
+                # 503/404 sunucu yogunlugu veya model yoklugu: 90 saniye boyunca tum anahtarlarda bu modeli atla
+                short_expiry = now - self.cooldown_seconds + 90.0
                 for k in self.keys:
                     self.exhausted_pairs[(model, k)] = short_expiry
-                print(f"\n[Model Yoğunluk Zırhı] 🔄 {model} sunucusu yoğun (503), sıradaki modele geçiliyor!")
+                print(f"\n[Model Yoğunluk Zırhı] 🔄 {model} sunucusu yoğun (503/404), 90sn sıradaki modele geçiliyor!")
             else:
                 pair = (model, key)
                 self.exhausted_pairs[pair] = now
