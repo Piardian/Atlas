@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07111f"/>
+      <stop offset="100%" stop-color="#0c1830"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#39a7ff"/>
+      <stop offset="100%" stop-color="#6ee7ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <style>
+      .title{font:700 46px Arial,sans-serif;fill:#fff}
+      .subtitle{font:400 21px Arial,sans-serif;fill:#b9c9df}
+      .section{font:700 25px Arial,sans-serif;fill:#6fc4ff}
+      .box-title{font:700 20px Arial,sans-serif;fill:#fff}
+      .box-text{font:400 16px Arial,sans-serif;fill:#b9c9df}
+      .small{font:400 15px Arial,sans-serif;fill:#92a8c5}
+      .metric{font:700 29px Arial,sans-serif;fill:#6ee7ff}
+      .metric-label{font:400 15px Arial,sans-serif;fill:#b9c9df}
+      .mono{font:500 15px "Courier New",monospace;fill:#9fe7ff}
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" rx="28" fill="url(#bg)"/>
+
+  <text x="70" y="82" class="title">ATLAS</text>
+  <text x="245" y="82" class="subtitle">Autonomous Multi-Agent Orchestrator</text>
+  <text x="70" y="118" class="subtitle">CrewAI + Browser Use + Aider + Gemini</text>
+
+  <rect x="70" y="155" width="1460" height="365" rx="24" fill="#0b1930" stroke="#1d4d7a" stroke-width="2" filter="url(#shadow)"/>
+  <text x="105" y="195" class="section">End-to-End Architecture</text>
+  <text x="105" y="224" class="small">A natural-language request is converted into specialized execution, review, and persistent output.</text>
+
+  <!-- User -->
+  <rect x="105" y="270" width="225" height="150" rx="18" fill="#0e2643" stroke="#2b83c8" stroke-width="2"/>
+  <text x="130" y="305" class="box-title">1 · User Prompt</text>
+  <text x="130" y="340" class="box-text">Natural-language task</text>
+  <text x="130" y="370" class="box-text">Research / coding / hybrid</text>
+  <text x="130" y="400" class="mono">"research + execute"</text>
+
+  <!-- Atlas -->
+  <rect x="390" y="255" width="250" height="180" rx="18" fill="#102a48" stroke="#39a7ff" stroke-width="3"/>
+  <text x="425" y="292" class="box-title">2 · Atlas Orchestrator</text>
+  <text x="425" y="328" class="box-text">Specification Expander</text>
+  <text x="425" y="356" class="box-text">Dynamic Agent Factory</text>
+  <text x="425" y="384" class="box-text">Capability routing</text>
+  <text x="425" y="412" class="box-text">Resilient model/key routing</text>
+
+  <!-- Research -->
+  <rect x="700" y="245" width="245" height="115" rx="18" fill="#102a48" stroke="#36d399" stroke-width="2"/>
+  <text x="730" y="282" class="box-title">3A · Research Agent</text>
+  <text x="730" y="313" class="box-text">Browser Use + Chromium</text>
+  <text x="730" y="338" class="box-text">Live navigation + extraction</text>
+
+  <!-- Engineer -->
+  <rect x="700" y="380" width="245" height="115" rx="18" fill="#102a48" stroke="#b27cff" stroke-width="2"/>
+  <text x="730" y="417" class="box-title">3B · Engineer Agent</text>
+  <text x="730" y="448" class="box-text">Aider CLI</text>
+  <text x="730" y="473" class="box-text">Local code generation / edits</text>
+
+  <!-- Reviewer -->
+  <rect x="1010" y="310" width="235" height="155" rx="18" fill="#102a48" stroke="#f2c14e" stroke-width="2"/>
+  <text x="1040" y="347" class="box-title">4 · Reviewer</text>
+  <text x="1040" y="378" class="box-text">Validate findings</text>
+  <text x="1040" y="406" class="box-text">Synthesize structured output</text>
+  <text x="1040" y="434" class="box-text">Avoid duplicate browser work</text>
+
+  <!-- Output -->
+  <rect x="1310" y="270" width="180" height="220" rx="18" fill="#0e2e2c" stroke="#36d399" stroke-width="3"/>
+  <text x="1340" y="307" class="box-title">5 · Output</text>
+  <text x="1340" y="344" class="box-text">Markdown report</text>
+  <text x="1340" y="376" class="box-text">Structured findings</text>
+  <text x="1340" y="408" class="box-text">Visited URLs</text>
+  <text x="1340" y="440" class="box-text">Telemetry</text>
+  <text x="1340" y="472" class="box-text">Execution summary</text>
+
+  <!-- arrows -->
+  <g fill="none" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M330 345 L390 345"/>
+    <path d="M640 330 L700 303"/>
+    <path d="M640 360 L700 438"/>
+    <path d="M945 303 L1010 356"/>
+    <path d="M945 438 L1010 415"/>
+    <path d="M1245 387 L1310 387"/>
+  </g>
+  <g fill="#6ee7ff">
+    <polygon points="390,345 374,336 374,354"/>
+    <polygon points="700,303 683,294 687,313"/>
+    <polygon points="700,438 683,429 688,447"/>
+    <polygon points="1010,356 992,348 998,367"/>
+    <polygon points="1010,415 991,408 997,426"/>
+    <polygon points="1310,387 1292,378 1292,396"/>
+  </g>
+
+  <!-- Browser runtime -->
+  <rect x="105" y="560" width="650" height="250" rx="22" fill="#0b1930" stroke="#1d4d7a" stroke-width="2"/>
+  <text x="138" y="604" class="section">Verified Browser Execution</text>
+  <text x="138" y="635" class="small">Browser Use controls a real Chromium session; findings are persisted for inspection.</text>
+  <rect x="138" y="665" width="285" height="105" rx="15" fill="#0e2643" stroke="#245985"/>
+  <text x="158" y="698" class="box-title">BrowserUseBackend</text>
+  <text x="158" y="728" class="box-text">Primary browser backend</text>
+  <text x="158" y="754" class="mono">browser-use → Chromium</text>
+  <rect x="445" y="665" width="275" height="105" rx="15" fill="#0e2643" stroke="#245985"/>
+  <text x="465" y="698" class="box-title">Telemetry</text>
+  <text x="465" y="728" class="box-text">backend · success · URLs</text>
+  <text x="465" y="754" class="mono">browser_telemetry.jsonl</text>
+
+  <!-- Metrics -->
+  <rect x="790" y="560" width="740" height="250" rx="22" fill="#0b1930" stroke="#1d4d7a" stroke-width="2"/>
+  <text x="823" y="604" class="section">Proof-of-Concept Evidence</text>
+
+  <text x="840" y="670" class="metric">5</text>
+  <text x="840" y="699" class="metric-label">company websites visited</text>
+
+  <text x="1040" y="670" class="metric">E2E</text>
+  <text x="1040" y="699" class="metric-label">Atlas → CrewAI → Browser Use → Reviewer</text>
+
+  <text x="1300" y="670" class="metric">0</text>
+  <text x="1300" y="699" class="metric-label">fallbacks in verified run</text>
+
+  <line x1="835" y1="730" x2="1485" y2="730" stroke="#234667" stroke-width="2"/>
+  <text x="835" y="763" class="small">Artifacts:</text>
+  <text x="915" y="763" class="mono">TR_AI_COMPANIES_REPORT.md</text>
+  <text x="835" y="790" class="mono">WEB_RESEARCH_REPORT.md</text>
+  <text x="1095" y="790" class="mono">browser_telemetry.jsonl</text>
+</svg>
