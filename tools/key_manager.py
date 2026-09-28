@@ -7,22 +7,22 @@ from dotenv import load_dotenv
 
 FALLBACK_ENV_PATH = Path(r"C:\Users\piard\Downloads\orkestrat-r-test9-fixed\agent-core\.env")
 
-# 1. KURAL: Bas Mimar (En yuksek erisilebilirlik ve hiz sirasiyla 3.1-flash-lite -> 3.7 -> 3.6 -> 3.8 -> Gemma 4)
+# 1. KURAL: Bas Mimar & Denetleyici (En yuksek erisilebilirlik ve hiz sirasiyla 3.1-flash-lite -> Gemma 4 26B -> 3.7 -> 3.6 -> 3.8)
 ARCHITECT_CASCADE = [
     "gemini/gemini-3.1-flash-lite",
+    "gemini/gemma-4-26b-a4b-it",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.8-flash",
-    "gemini/gemma-4-26b-a4b-it",
 ]
 
-# 2. KURAL: Calisanlar ve BrowserUse Ajanlari (Yuksek gunluk kotali ve dusuk gecikmeli 3.1-flash-lite -> 3.5-flash-lite -> 3.6 -> 3.7 -> Gemma 4)
+# 2. KURAL: Calisanlar ve BrowserUse Ajanlari (Yuksek gunluk kotali ve dusuk gecikmeli 3.1-flash-lite -> Gemma 4 26B -> 3.5-flash-lite -> 3.6 -> 3.7)
 WORKER_CASCADE = [
     "gemini/gemini-3.1-flash-lite",
+    "gemini/gemma-4-26b-a4b-it",
     "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.7-flash",
-    "gemini/gemma-4-26b-a4b-it",
 ]
 
 
@@ -124,6 +124,7 @@ class SmartFallbackRouter:
             for model in cascade:
                 for key in ordered_keys:
                     if not self.is_exhausted(model, key):
+                        os.environ["GEMINI_API_KEY"] = key
                         return model, key
 
             # Tum kademeler gecici pasifse en erken suresi dolacak olan cifti serbest birak
@@ -136,6 +137,7 @@ class SmartFallbackRouter:
                         oldest_ts = ts
                         best_pair = (model, key)
             self.exhausted_pairs.pop(best_pair, None)
+            os.environ["GEMINI_API_KEY"] = best_pair[1]
             return best_pair
 
     def get_all_keys(self) -> List[str]:

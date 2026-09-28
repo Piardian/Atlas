@@ -145,6 +145,79 @@ class BrowserUseBackend(BaseBrowserBackend):
 
         return AtlasRotatingChatGoogle()
 
+    def _synthesize_from_browser_use_history(
+        self,
+        task: str,
+        visited_urls: List[str],
+        extracted_chunks: List[str],
+        final_res: str,
+    ) -> str:
+        """
+        BrowserUseAgent gorevi tamamladiginda final_result icinde henuz Markdown karsilastirma tablosu yoksa,
+        baska hicbir tarayici acmadan SADECE BrowserUseAgent'in kendi cikardigi (history.extracted_content)
+        verilerden yapilandirilmis Turkce Markdown tablo raporu sentezler.
+        """
+        combined_notes = "\n\n---\n\n".join(extracted_chunks + ([final_res] if final_res else [])).strip()
+        urls_md = "\n".join(f"- {u}" for u in visited_urls)
+
+        sys_prompt = (
+            "Sen Kıdemli bir Web Araştırma Raporlama Uzmanısın.\n"
+            "Aşağıda Browser Use ajanının gerçek Chromium tarayıcısıyla ziyaret ettiği URL'ler ve "
+            "sayfalardan çıkardığı ham bulgular yer almaktadır.\n"
+            "Bu bulguları kullanarak kullanıcının görevini eksiksiz yerine getiren, "
+            "Markdown karşılaştırma tablosu (| # | Şirket / Kaynak | Web Sitesi | Ana Yapay Zeka Ürünleri & Çözümler | İletişim Bilgileri |) "
+            "ve detaylı şirket/kaynak profilleri içeren Türkçe bir rapor hazırla."
+        )
+        user_msg = (
+            f"GÖREV:\n{task}\n\n"
+            f"BROWSER-USE TARAFINDAN ZİYARET EDİLEN URL'LER:\n{urls_md}\n\n"
+            f"BROWSER-USE TARAFINDAN ÇIKARILAN İÇERİKLER:\n{combined_notes[:12000]}"
+        )
+
+        for attempt in range(6):
+            try:
+                model, key = self.router.get_best_model_and_key(
+                    tier=self.tier, preferred_agent_idx=self.agent_idx + attempt
+                )
+                resp = litellm.completion(
+                    model=model,
+                    api_key=key,
+                    messages=[
+                        {"role": "system", "content": sys_prompt},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    temperature=0.2,
+                    timeout=25,
+                    num_retries=0,
+                )
+                content = (resp.choices[0].message.content or "").strip()
+                if content and "|" in content:
+                    return content
+            except Exception as e:
+                err_s = str(e).lower()
+                if any(
+                    k in err_s
+                    for k in ["429", "503", "504", "timeout", "unavailable", "quota", "resource_exhausted", "rate", "high demand"]
+                ):
+                    self.router.mark_exhausted(model, key, reason=f"BU synthesis: {err_s[:40]}")
+                    continue
+                break
+
+        # Eger tum LLM anahtarlari mesgulse BrowserUse bulgularini dogrudan tablo formatinda paketle
+        rows = []
+        for idx, u in enumerate(visited_urls, start=1):
+            chunk_preview = (extracted_chunks[idx - 1] if idx - 1 < len(extracted_chunks) else final_res)[:240].replace("\n", " ").replace("|", " ")
+            rows.append(f"| {idx} | Kaynak #{idx} | {u} | {chunk_preview} | {u} |")
+        table_str = (
+            "## 🌐 Browser Use Araştırma Tablosu\n\n"
+            "| # | Kaynak | Web Sitesi | Çıkarılan Bulgular | Bağlantı |\n"
+            "|---|---|---|---|---|\n"
+            + "\n".join(rows)
+            + "\n\n## 📋 Browser Use Ham Çıkarımlar\n\n"
+            + combined_notes
+        )
+        return table_str
+
     async def _run_async(
         self,
         task: str,
@@ -155,17 +228,24 @@ class BrowserUseBackend(BaseBrowserBackend):
         from browser_use import Agent as BrowserUseAgent, BrowserProfile, BrowserSession
 
         start_ts = time.time()
-        helper = PlaywrightSmartBackend(tier=self.tier, agent_idx=self.agent_idx)
-        target_urls = helper._plan_urls_with_llm(task, start_url)
+        url_planner = PlaywrightSmartBackend(tier=self.tier, agent_idx=self.agent_idx)
+        target_urls = url_planner._plan_urls_with_llm(task, start_url)
         first_url = start_url or (target_urls[0] if target_urls else "https://vispera.co")
         urls_list_str = ", ".join(target_urls[:5])
 
         full_task = (
-            f"Navigate first to {first_url}. "
-            f"Target websites to inspect for this mission: {urls_list_str}. "
-            f"Do NOT waste steps creating or editing todo.md files; directly navigate to each website, extract their core AI products/solutions and official contact details (emails, contact URLs), "
-            f"and finish by calling 'done' with a comprehensive Turkish Markdown report including a comparison table covering all {len(target_urls)} targets. "
-            f"Mission details: {task}"
+            f"Start at {first_url} and inspect these target websites in order: {urls_list_str}. "
+            f"For each website, extract their main AI products/solutions and official contact details (emails, contact page URL, address/phone if visible). "
+            f"Do NOT create or edit todo.md files. Visit all {len(target_urls[:5])} websites and then call 'done' with a complete Turkish Markdown report "
+            f"containing a comparison table (| # | Şirket Adı | Web Sitesi | Ana Yapay Zeka Ürünleri | İletişim Bilgileri |) and detailed sections. "
+            f"Original mission: {task}"
+        )
+
+        system_rules = (
+            "CRITICAL EXECUTION RULES:\n"
+            "1. NEVER use write_file, replace_file, or read_file actions. Do NOT maintain a todo.md file.\n"
+            "2. Spend your step budget navigating directly to each target URL and running extract on the page.\n"
+            "3. Once you have extracted information from the target websites, call 'done' with a comprehensive Turkish Markdown report including a Markdown table."
         )
 
         rotating_llm = self._create_rotating_browser_use_llm()
@@ -180,6 +260,8 @@ class BrowserUseBackend(BaseBrowserBackend):
                 page_extraction_llm=rotating_llm,
                 fallback_llm=rotating_llm,
                 browser_session=browser_session,
+                extend_system_message=system_rules,
+                enable_planning=False,
                 use_vision=False,
                 use_judge=False,
                 flash_mode=True,
@@ -217,29 +299,17 @@ class BrowserUseBackend(BaseBrowserBackend):
                 err_msg = "; ".join(errs) if errs else "BrowserUseAgent hicbir URL ziyaret edemedi."
                 raise RuntimeError(err_msg)
 
-            # Eger BrowserUseAgent tum hedef siteleri gezmeden max_steps sinirina ulastiysa veya
-            # ciktiyi henuz tam Markdown tablosuna donusturmediyse, kalan sitelerin DOM ozetleriyle
-            # BrowserUseAgent bulgularini birlestirerek eksiksiz tablo raporu olustur.
-            visited_domains = {urllib.parse.urlparse(u).netloc.replace("www.", "").lower() for u in visited if u.startswith("http")}
-            target_domains = {urllib.parse.urlparse(u).netloc.replace("www.", "").lower() for u in target_urls if u.startswith("http")}
-            all_targets_visited = len(visited_domains.intersection(target_domains)) >= len(target_domains)
-            has_complete_table = ("|" in final_res and "---" in final_res and len(final_res) >= 250 and all_targets_visited)
-            structured_snapshots: List[Dict[str, Any]] = []
-
-            if not has_complete_table:
-                # BrowserUseAgent'in gezdigi ve kalan hedef sitelerin DOM verilerini zenginlestir
-                extra_visited, structured_snapshots = await asyncio.to_thread(
-                    helper._scrape_with_playwright, target_urls, True
+            # Eger BrowserUseAgent final_result icinde tam tablo uretmediyse, baska tarayici acmadan
+            # dogrudan BrowserUseAgent'in kendi extracted_content bulgularindan tabloyu sentezle
+            has_markdown_table = ("|" in final_res and "---" in final_res and len(final_res) >= 250)
+            if not has_markdown_table:
+                final_res = await asyncio.to_thread(
+                    self._synthesize_from_browser_use_history,
+                    task,
+                    visited,
+                    extracted_chunks,
+                    final_res,
                 )
-                for ev in extra_visited:
-                    if ev not in visited:
-                        visited.append(ev)
-
-                bu_notes = "\n".join(extracted_chunks[-4:] + ([final_res] if final_res else [])).strip()
-                if bu_notes and structured_snapshots:
-                    structured_snapshots[0]["browser_use_agent_notes"] = bu_notes[:800]
-
-                final_res = await asyncio.to_thread(helper._synthesize_with_llm, task, structured_snapshots)
 
             # Eger kullanici buldugu siteleri tarayicida acip karsisina getirmesini istediyse
             t_low = task.lower()
@@ -247,20 +317,12 @@ class BrowserUseBackend(BaseBrowserBackend):
                 phrase in t_low
                 for phrase in ["karşıma getir", "karsima getir", "tarayıcıdan aç", "tarayicidan ac", "tarayıcıda aç", "ekranda aç"]
             ):
-                urls_to_open: List[str] = []
-                for snap in structured_snapshots:
-                    for lk in snap.get("relevant_links", []):
-                        href = lk.get("href", "")
-                        if href.startswith("http") and "/jobs/view/" in href.lower():
-                            if href not in urls_to_open:
-                                urls_to_open.append(href)
-                if not urls_to_open:
-                    urls_to_open = [u for u in visited if "github.com" not in u and "contact" not in u][:3]
-                for open_u in urls_to_open[:3]:
+                urls_to_open = [u for u in visited if "github.com" not in u and "contact" not in u][:3]
+                for open_u in urls_to_open:
                     try:
                         webbrowser.open_new_tab(open_u)
-                    except Exception:
-                        pass
+                    except Exception as wb_err:
+                        print(f"[BrowserUseBackend] Sekme acma uyarisi ({open_u}): {wb_err}")
 
             active_model = getattr(rotating_llm, "last_used_model", "gemini-3.1-flash-lite")
             return BrowserTaskResult(
@@ -269,7 +331,7 @@ class BrowserUseBackend(BaseBrowserBackend):
                 task=task,
                 visited_urls=visited,
                 extracted_content=final_res,
-                structured_data=structured_snapshots if structured_snapshots else None,
+                structured_data={"extracted_chunks": extracted_chunks, "visited_urls": visited},
                 elapsed_seconds=time.time() - start_ts,
             )
         finally:
@@ -282,15 +344,15 @@ class BrowserUseBackend(BaseBrowserBackend):
                             if asyncio.iscoroutine(res):
                                 await res
                             break
-                        except Exception:
-                            pass
+                        except Exception as close_err:
+                            print(f"[BrowserUseBackend] Oturum kapatma uyarisi: {close_err}")
 
     def execute(
         self,
         task: str,
         start_url: Optional[str] = None,
         headless: bool = True,
-        max_steps: int = 12,
+        max_steps: int = 15,
     ) -> BrowserTaskResult:
         try:
             return asyncio.run(
@@ -556,8 +618,8 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
                             contact_page_text = re.sub(r"\s+", " ", c_raw or "").strip()[:800]
                             c_emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", c_full or "")
                             emails = list(set(emails + c_emails))
-                        except Exception:
-                            pass
+                        except Exception as contact_err:
+                            print(f"[PlaywrightSmartBackend] Iletisim alt sayfasi okunamadi ({contact_sub_url}): {contact_err}")
 
                     page_snapshots.append({
                         "url": url,
@@ -665,7 +727,8 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
         for _ in range(8):
             try:
                 model, key = self.router.get_best_model_and_key(tier=self.tier, preferred_agent_idx=self.agent_idx)
-            except Exception:
+            except Exception as key_err:
+                print(f"[PlaywrightSmartBackend] Anahtar secim uyarisi: {key_err}")
                 break
             try:
                 resp = litellm.completion(
@@ -710,7 +773,8 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
 
         try:
             visited, snapshots = self._scrape_with_playwright(target_urls, headless=headless)
-        except Exception:
+        except Exception as pw_err:
+            print(f"[PlaywrightSmartBackend] Playwright baslatilamadi ({pw_err}), HTTP DOM yedegine geciliyor...")
             backend_label = "http-dom-fallback"
             visited, snapshots = self._scrape_via_http_fallback(target_urls)
 
@@ -743,8 +807,8 @@ class PlaywrightSmartBackend(BaseBrowserBackend):
             for open_u in urls_to_open[:3]:
                 try:
                     webbrowser.open_new_tab(open_u)
-                except Exception:
-                    pass
+                except Exception as wb_err:
+                    print(f"[PlaywrightSmartBackend] Sekme acma uyarisi ({open_u}): {wb_err}")
 
         return BrowserTaskResult(
             success=True,

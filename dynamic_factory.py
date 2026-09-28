@@ -76,35 +76,25 @@ class DynamicAgentFactory:
             json_match = re.search(r"\{[\s\S]*\}", blueprint_text)
             if json_match:
                 data = json.loads(json_match.group(0))
-                if "agents" in data and len(data["agents"]) >= 2:
-                    return data["agents"]
+                min_agents = 1 if task_type == "web_research" else 2
+                if "agents" in data and len(data["agents"]) >= min_agents:
+                    return data["agents"][:1] if task_type == "web_research" else data["agents"]
         except Exception as e:
             print(f"[DynamicFactory] JSON ayiklama uyarisi: {e}. Akilli '{task_type}' sablonu kullaniliyor.")
 
         if task_type == "web_research":
             return [
                 {
-                    "role": "Lead Web Research & Ecosystem Discovery Agent",
-                    "goal": f"Hedef ekosistemdeki kurumlari/kaynaklari ve resmi web adreslerini tespit etmek: {user_prompt}",
-                    "backstory": "Teknoloji ekosistemleri, sirket kesfi ve kaynak dogrulama konusunda uzman arastirmaci ajan.",
+                    "role": "Browser Research & Web Extraction Agent",
+                    "goal": f"Gercek tarayici (Browser Use + Chromium) ile hedef web sitelerini ziyaret edip urunleri ve resmi iletisim bilgilerini cikarmak: {user_prompt}",
+                    "backstory": "Teknoloji ekosistemleri, sirket kesfi, DOM analizi ve kurumsal iletisim verisi cikariminda uzman tarayici arastirma ajani.",
                     "capabilities": ["browser"],
-                    "target_files": "research_discovery.md",
+                    "target_files": "WEB_RESEARCH_REPORT.md",
                     "instruction": (
-                        f"Gorev kapsamindaki hedef sirketleri/kaynaklari ve resmi web sitesi adreslerini belirle, "
-                        f"tarayici araciyla ana sayfalarini dogrula: {user_prompt}"
+                        f"Gorev kapsamindaki hedef sirketlerin resmi web sitelerini 'Browser Automation & Web Research Tool' araciyla ziyaret et; "
+                        f"ana yapay zeka urunlerini/cozumlerini ve resmi iletisim bilgilerini (e-posta, iletisim sayfasi URL'si, adres/konum) detayli cikar: {user_prompt}"
                     ),
-                },
-                {
-                    "role": "Deep Browser Extraction & Contact Intelligence Agent",
-                    "goal": f"Gercek tarayici (Browser Use) ile hedef web sitelerine gidip urunleri ve iletisim bilgilerini cikarmak: {user_prompt}",
-                    "backstory": "DOM analizi, urun katalogu cikarimi ve kurumsal iletisim verisi madenciliginde uzman tarayici ajani.",
-                    "capabilities": ["browser"],
-                    "target_files": "extracted_details.md",
-                    "instruction": (
-                        f"Tespit edilen sirketlerin resmi web sitelerini tarayici araciyla ziyaret et; "
-                        f"urunlerini, cozumlerini ve iletisim bilgilerini (e-posta, web, konum) detayli cikar: {user_prompt}"
-                    ),
-                },
+                }
             ]
 
         return [
@@ -218,7 +208,7 @@ class DynamicAgentFactory:
                 f"------------------------------------\n"
             )
 
-        max_workers = 3 if task_type == "web_research" else 5
+        max_workers = 1 if task_type == "web_research" else 5
         for idx, spec in enumerate(agents_blueprint[:max_workers]):
             role_name = spec.get("role", f"Specialist Agent #{idx+1}")
             goal = spec.get("goal", f"Gorevi basariyla tamamlamak: {user_prompt}")

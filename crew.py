@@ -71,28 +71,20 @@ class AiderCrewOrchestrator:
 
         if task_type == "web_research":
             arch_system_prompt = (
-                "Sen Kıdemli Baş Araştırma Mimarısın. Verilen web araştırma görevini gerçek tarayıcı (Browser Use) "
-                "ile yürütecek 2 UZMAN ARAŞTIRMA AJANI belirle.\n"
+                "Sen Kıdemli Baş Araştırma Mimarısın. Verilen web araştırma görevini gerçek tarayıcı (Browser Use + Chromium) "
+                "ile yürütecek UZMAN TARAYICI ARAŞTIRMA AJANINI belirle.\n"
                 "Çıktını SADECE geçerli JSON formatında ver:\n"
                 "{\n"
                 '  "domain": "Web Research & Browser Automation",\n'
                 '  "project_name": "' + str(arch_spec.get("project_title", "WebResearch")) + '",\n'
                 '  "agents": [\n'
                 '    {\n'
-                '      "role": "Research & Discovery Agent",\n'
-                '      "goal": "Hedef şirketleri ve resmi web adreslerini keşfetmek",\n'
-                '      "backstory": "Ekosistem ve kurumsal kaynak araştırmacısı",\n'
+                '      "role": "Browser Research & Web Extraction Agent",\n'
+                '      "goal": "Hedef şirketlerin resmi web sitelerini Browser Use ile ziyaret edip ürünleri ve iletişim bilgilerini çıkarmak",\n'
+                '      "backstory": "Gerçek tarayıcı otomasyonu, DOM analizi ve kurumsal veri çıkarım uzmanı",\n'
                 '      "capabilities": ["browser"],\n'
-                '      "target_files": "discovery.md",\n'
-                '      "instruction": "Tarayıcı aracıyla hedef şirketleri ve resmi sitelerini bul"\n'
-                '    },\n'
-                '    {\n'
-                '      "role": "Deep Browser Extraction Agent",\n'
-                '      "goal": "Şirket web sitelerinden ürünleri ve iletişim bilgilerini çıkarmak",\n'
-                '      "backstory": "DOM analizi ve kurumsal veri çıkarım uzmanı",\n'
-                '      "capabilities": ["browser"],\n'
-                '      "target_files": "extraction.md",\n'
-                '      "instruction": "Resmi web sitelerini ziyaret et, ürünleri ve iletişim bilgilerini çıkar"\n'
+                '      "target_files": "WEB_RESEARCH_REPORT.md",\n'
+                '      "instruction": "Browser Automation & Web Research Tool aracını kullanarak resmi web sitelerini ziyaret et, ürünleri ve iletişim bilgilerini çıkar"\n'
                 '    }\n'
                 '  ]\n'
                 "}"
@@ -146,14 +138,31 @@ class AiderCrewOrchestrator:
 
         max_exec_attempts = 2 if task_type == "web_research" else 8
         final_crew_result = None
+        completed_browser_output = None
 
         for attempt in range(max_exec_attempts):
+            parallel_tasks = []
             try:
                 parallel_agents, parallel_tasks, reviewer_agent, review_task = self.factory.build_dynamic_crew_components(
                     agents_blueprint=blueprint_specs,
                     user_prompt=expanded_prompt,
                     arch_spec=arch_spec,
                 )
+
+                if completed_browser_output and task_type == "web_research":
+                    print("\n🧐 [Aşama 3 - Devam] Tarayıcı araştırması tamamlandı; Denetleyici Ajan (Reviewer) yeni modelle raporu sentezliyor...")
+                    review_task.context = []
+                    review_task.description += f"\n\nTARAYICI AJANI BULGULARI:\n{completed_browser_output}"
+                    reviewer_crew = Crew(
+                        agents=[reviewer_agent],
+                        tasks=[review_task],
+                        process=Process.sequential,
+                        verbose=True,
+                        memory=False,
+                        tracing=False,
+                    )
+                    final_crew_result = reviewer_crew.kickoff()
+                    break
 
                 print(f"\n👥 [Aşama 3] Sahaya Sürülen Dinamik Uzman Kadrosu ({len(parallel_agents) + 1} Ajan):")
                 for i, ag in enumerate(parallel_agents):
@@ -182,18 +191,25 @@ class AiderCrewOrchestrator:
                 break
 
             except Exception as e:
+                if task_type == "web_research" and parallel_tasks and getattr(parallel_tasks[0], "output", None):
+                    raw_out = str(getattr(parallel_tasks[0].output, "raw", parallel_tasks[0].output) or "").strip()
+                    if raw_out:
+                        completed_browser_output = raw_out
                 if self._is_recoverable_error(e):
                     try:
                         cur_model, cur_key = self.router.get_best_model_and_key(tier="worker")
                         self.router.mark_exhausted(cur_model, cur_key, reason=str(e)[:80])
-                    except Exception:
-                        pass
+                    except Exception as mark_err:
+                        print(f"[Atlas Orchestrator] Anahtar isaretleme uyarisi: {mark_err}")
                     print(f"\n[Ağ/Kota Zırhı] 🔄 Sıradaki anahtar/model ile yeniden deneniyor ({attempt+1}/{max_exec_attempts})...")
                     time.sleep(1)
                 else:
                     if task_type == "web_research":
                         break
                     raise e
+
+        if not final_crew_result and completed_browser_output and task_type == "web_research":
+            final_crew_result = completed_browser_output
 
         if not final_crew_result and task_type == "web_research":
             print("\n🛡️ [Atlas Capability Shield] Doğrudan BrowserAutomationTool katmanı devreye alınıyor...")
@@ -212,18 +228,38 @@ class AiderCrewOrchestrator:
             work_path = Path(self.workspace_dir)
             work_path.mkdir(parents=True, exist_ok=True)
             report_file = work_path / "WEB_RESEARCH_REPORT.md"
-            result_str = str(final_crew_result or "")
-            report_file.write_text(result_str, encoding="utf-8")
+            result_str = str(final_crew_result or "").strip()
 
-            has_table = "|" in result_str and "---" in result_str
             telemetry_path = work_path / "browser_telemetry.jsonl"
             visited_count = 0
+            latest_telemetry = None
             if telemetry_path.exists():
                 for line in telemetry_path.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
                     try:
-                        visited_count += len(json.loads(line).get("visited_urls", []))
-                    except Exception:
-                        pass
+                        parsed_line = json.loads(line)
+                        visited_count += len(parsed_line.get("visited_urls", []))
+                        latest_telemetry = parsed_line
+                    except Exception as tel_parse_err:
+                        print(f"[Atlas Verifier] Telemetri satiri ayristirilamadi: {tel_parse_err}")
+
+            if latest_telemetry and "=== Atlas Browser Capability Sonucu" not in result_str:
+                backend_used = latest_telemetry.get("backend_used", "browser-use")
+                elapsed_s = latest_telemetry.get("elapsed_seconds", 0.0)
+                urls_list = latest_telemetry.get("visited_urls", [])
+                urls_md = "\n".join(f"  - {u}" for u in urls_list) if urls_list else "  - (Kayitli URL yok)"
+                header_block = (
+                    f"=== Atlas Browser Capability Sonucu (BASARILI | Backend: {backend_used}) ===\n"
+                    f"Gorev: {user_prompt}\n"
+                    f"Sure: {elapsed_s:.2f} sn\n"
+                    f"Ziyaret Edilen URL'ler:\n{urls_md}\n\n"
+                )
+                result_str = header_block + result_str
+                final_crew_result = result_str
+
+            report_file.write_text(result_str, encoding="utf-8")
+            has_table = "|" in result_str and "---" in result_str
 
             print("🏆 [Atlas Web Research Verifier] Nihai Doğrulama Raporu:")
             print(f"• Tarayıcı Telemetri Kaydı: {'PASS ✅' if visited_count > 0 else 'INFO ℹ️'} ({visited_count} sayfa ziyaret edildi)")
