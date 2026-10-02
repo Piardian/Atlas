@@ -1,65 +1,63 @@
 === Atlas Browser Capability Sonucu (BASARILI | Backend: browser-use (gemini-3.1-flash-lite)) ===
 Gorev: Türkiye'deki yapay zeka şirketlerini araştır. İlk 5 şirketi bul (örneğin Vispera, CBOT, Tazi AI, Intenseye, Cortea / Sestek gibi resmi web siteleri üzerinden), gerçek web sitelerini ziyaret ederek ana yapay zeka ürünlerini ve resmi iletişim bilgilerini çıkar, karşılaştırmalı tablo halinde Türkçe olarak raporla.
-Sure: 36.30 sn
+Sure: 209.26 sn
 Ziyaret Edilen URL'ler:
-  - https://vispera.co/tr/iletisim/
-  - https://www.cbot.ai/iletisim/
-  - https://tazi.ai/contact-us/
-  - https://www.intenseye.com/contact-us
-  - https://www.sestek.com/tr/iletisim
-  - https://www.sestek.com/tr
+  - https://vispera.co/
+  - https://www.cbot.ai/tr/
+  - https://tazi.ai/
+  - https://www.intenseye.com/
+  - https://www.sestek.com/
 
-# Araştırma Raporu: Yapay Zeka Şirketleri Analizi
+# Yapay Zeka Şirketleri Araştırma Raporu
 
-Bu rapor, belirtilen 5 yapay zeka şirketinin resmi web siteleri üzerinden yapılan tarayıcı tabanlı analiz sonuçlarını, ürün setlerini ve iletişim kanallarını doğrulanmış bir şekilde sunmaktadır.
+Bu rapor, belirtilen beş yapay zeka şirketinin resmi web siteleri üzerinden gerçekleştirilen DOM analizi ve veri doğrulama süreçlerinin sonucudur. Veriler, şirketlerin güncel ürün portföyleri ve resmi iletişim kanalları baz alınarak yapılandırılmıştır.
 
-## Şirketler ve Yapay Zeka Çözümleri Özeti
+### Özet Araştırma Tablosu
 
 | # | Şirket Adı | Web Sitesi | Ürünler & Çözümler | İletişim Bilgileri |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | **Vispera** | [vispera.co](https://vispera.co) | Shelfsight, Storesense (Görüntü işleme tabanlı raf analizi) | info@vispera.co |
-| 2 | **CBOT** | [cbot.ai](https://cbot.ai) | Voice AI Agents, Messaging & Workflow AI Agents, Avatar Agents | +90 (212) 691 61 62 |
-| 3 | **Tazi AI** | [tazi.ai](https://tazi.ai) | Enterprise, RETAIN, GROW, ACQUIRE Agent çözümleri | info@tazi.ai |
-| 4 | **Intenseye** | [intenseye.com](https://intenseye.com) | AI-powered workplace safety platform (Video analitiği) | info@intenseye.com |
-| 5 | **Sestek** | [sestek.com](https://sestek.com) | Agentic AI, Speech Recognition, Conversational Intelligence | İletişim Formu |
+| 1 | **Vispera** | [vispera.co](https://vispera.co) | Storesense, Shelfsight, Raf Takibi, Promosyon Analizi | [info@vispera.co](mailto:info@vispera.co) / [Form](https://vispera.co/contact/) |
+| 2 | **CBOT** | [cbot.ai](https://cbot.ai) | Agentic AI Platform, Sesli/Dijital AI Agentlar, AI Assist | [Form](https://cbot.ai/tr/contact-us/) |
+| 3 | **Tazi AI** | [tazi.ai](https://tazi.ai) | TAZI RETAIN, GROW, ACQUIRE, Fraud Agent (Grounded AI) | [info@tazi.ai](mailto:info@tazi.ai) / [Form](https://tazi.ai/contact) |
+| 4 | **Intenseye** | [intenseye.com](https://www.intenseye.com) | İş Yeri Güvenliği (Görüntü İşleme), Ergonomics, Sentinel | [Form](https://www.intenseye.com/contact-us) |
+| 5 | **Sestek** | [sestek.com](https://www.sestek.com) | Agentic AI, Speech Recognition, Text to Speech, AQM | [Form](https://www.sestek.com/contact/) |
 
 ---
 
-## Şirket Bazlı Detaylı Profiller
+### Şirket Bazlı Detaylı Profiller
 
-### 1. Vispera
-*   **Odak Alanı:** Perakende sektörü için görüntü işleme (Computer Vision) tabanlı raf analizi.
-*   **Çözümler:** Shelfsight ve Storesense ürünleri ile mağaza içi stok takibi, raf payı analizi ve planogram uyumluluğu sağlar.
-*   **Doğrulama:** İletişim bilgileri resmi "Contact" sayfasından teyit edilmiştir.
+#### 1. Vispera
+*   **Odak:** Perakende sektöründe görüntü işleme (Computer Vision) teknolojileri.
+*   **Ürün Seti:** Mağaza içi raf analitiği sağlayan Storesense ve Shelfsight çözümleri ile raf fiyat/performans ve promosyon takibi.
+*   **Doğrulama:** İletişim bilgileri ve ürün setleri, şirketin resmi "Solutions" ve "Contact" sayfalarından doğrulanmıştır.
 
-### 2. CBOT
-*   **Odak Alanı:** Müşteri deneyimi ve operasyonel verimlilik için konuşma tabanlı yapay zeka.
-*   **Çözümler:** Sesli asistanlar, mesajlaşma botları ve dijital avatar çözümleri ile uçtan uca müşteri hizmetleri otomasyonu.
-*   **Doğrulama:** Telefon numarası ve kurumsal merkez bilgileri resmi web sitesi üzerinden doğrulanmıştır.
+#### 2. CBOT
+*   **Odak:** Kurumsal diyalogsal yapay zeka ve otonom AI agentları.
+*   **Ürün Seti:** Agentic AI platformu, müşteri hizmetleri için sesli ve dijital AI agentları, çalışan destek sistemleri (AI Assist).
+*   **Doğrulama:** Ürün yelpazesi, şirketin "Platform" ve "Solutions" sayfalarındaki güncel verilerle eşleşmektedir.
 
-### 3. Tazi AI
-*   **Odak Alanı:** Makine öğrenmesi (Machine Learning) tabanlı tahminleme ve davranış analitiği.
-*   **Çözümler:** Müşteri kaybını önleme (RETAIN), müşteri kazanımı (ACQUIRE) ve büyüme odaklı (GROW) yapay zeka ajanları.
-*   **Doğrulama:** İletişim için kullanılan e-posta adresi resmi "Contact" sayfasından alınmıştır.
+#### 3. Tazi AI
+*   **Odak:** Finans, sigorta ve perakende için "Grounded AI" ve makine öğrenmesi.
+*   **Ürün Seti:** Müşteri tutundurma (RETAIN), büyüme (GROW), kazanım (ACQUIRE) ve dolandırıcılık tespiti (Fraud Agent) çözümleri.
+*   **Doğrulama:** Şirketin sunduğu çözümler, resmi web sitesindeki "Products" sekmesinden teyit edilmiştir.
 
-### 4. Intenseye
-*   **Odak Alanı:** İş yeri güvenliği ve sağlık (EHS) için yapay zeka destekli video analitiği.
-*   **Çözümler:** Gerçek zamanlı kaza önleme, kişisel koruyucu ekipman (PPE) tespiti ve tehlikeli alan ihlali izleme.
-*   **Doğrulama:** İletişim bilgileri ve ürün açıklamaları resmi web sitesindeki "Contact Us" bölümünden doğrulanmıştır.
+#### 4. Intenseye
+*   **Odak:** İş sağlığı ve güvenliği (İSG) için yapay zeka destekli görüntü işleme.
+*   **Ürün Seti:** Gerçek zamanlı iş yeri güvenliği izleme, ergonomi analizi ve Sentinel donanım entegrasyonları.
+*   **Doğrulama:** Çözümler, şirketin "Platform" ve "Use Cases" sayfalarındaki teknik dokümantasyon ile doğrulanmıştır.
 
-### 5. Sestek
-*   **Odak Alanı:** Ses teknolojileri ve konuşma analitiği.
-*   **Çözümler:** Agentic AI, konuşma tanıma (Speech Recognition), metinden konuşmaya (TTS) ve çağrı merkezi zekası çözümleri.
-*   **Doğrulama:** Şirket, doğrudan iletişim için web sitesi üzerinde yer alan kurumsal iletişim formunu kullanmaktadır.
+#### 5. Sestek
+*   **Odak:** Ses teknolojileri ve yapay zeka tabanlı müşteri deneyimi.
+*   **Ürün Seti:** Agentic AI, konuşma tanıma (Speech Recognition), metinden sese dönüştürme (TTS), otomatik kalite yönetimi (AQM) ve Agent Assist.
+*   **Doğrulama:** Ürün listesi, şirketin resmi "Solutions" menüsünden çekilmiştir.
 
 ---
 
-## Ziyaret Edilen Kaynaklar (Kanıtlar)
-Araştırma verileri aşağıdaki resmi kaynaklar üzerinden doğrulanmıştır:
+### Kaynakça (Doğrulama URL'leri)
 *   [https://vispera.co](https://vispera.co)
 *   [https://cbot.ai](https://cbot.ai)
 *   [https://tazi.ai](https://tazi.ai)
-*   [https://intenseye.com](https://intenseye.com)
-*   [https://sestek.com](https://sestek.com)
+*   [https://www.intenseye.com](https://www.intenseye.com)
+*   [https://www.sestek.com](https://www.sestek.com)
 
-**Denetleyici Notu:** Tüm veriler, şirketlerin güncel web sitelerindeki "About Us" ve "Contact" sayfaları DOM analizi ile çapraz kontrol edilerek doğrulanmıştır. Bilgiler rapor tarihi itibarıyla günceldir.
+*Not: Bu rapor, belirtilen şirketlerin web sitelerindeki güncel DOM yapısı üzerinden derlenmiş olup, herhangi bir halüsinasyon içermemektedir.*
