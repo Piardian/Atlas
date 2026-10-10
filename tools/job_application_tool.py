@@ -205,7 +205,7 @@ class JobApplicationTool(BaseTool):
                 key = _normalise(key_text)
                 match = None
                 for profile_key, value in flattened.items():
-                    if profile_key and (profile_key in key or key in profile_key):
+                    if profile_key and key and (profile_key in key or key in profile_key):
                         match = value
                         break
                 if match is None:
