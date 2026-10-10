@@ -411,6 +411,35 @@ Do **not** commit `.env` or real API credentials.
 
 ---
 
+## Job search & application skill (initial MVP)
+
+Atlas exposes an on-demand `job_application` capability through `tools/job_application_tool.py`. The existing orchestrator and dynamic-agent architecture remain in place; the agent factory attaches this tool only when a task is classified as job search/application work.
+
+Supported actions:
+- `discover`: open a supplied job-search URL or search query and collect likely job links.
+- `inspect`: inspect a job page and return its title/text plus a baseline keyword-match score.
+- `prepare`: fill recognizable application fields from a supplied candidate-profile JSON and answer JSON; does not submit.
+- `submit`: attempts submission only when `ATLAS_JOB_AUTO_SUBMIT=true` and the destination host matches `ATLAS_JOB_ALLOWED_DOMAINS`. It is blocked for LinkedIn. Site terms, permissions, and any human-verification requirements still apply.
+
+The persistent Chromium profile is stored outside the repository by default at `~/.atlas/browser_profiles/jobs` (override with `ATLAS_JOB_BROWSER_PROFILE`). Treat this folder as sensitive: it may contain active sessions/cookies. Do not commit it, upload it, or share it. The first run should use a visible browser so the user can sign in normally.
+
+Optional configuration:
+```dotenv
+# Persistent browser profile directory (keep private and outside the repo)
+ATLAS_JOB_BROWSER_PROFILE=
+# Sending is disabled unless explicitly enabled:
+ATLAS_JOB_AUTO_SUBMIT=false
+# Exact domains/subdomains authorized for automated submissions, comma-separated:
+ATLAS_JOB_ALLOWED_DOMAINS=
+```
+
+Important MVP limits:
+- LinkedIn URLs are intentionally excluded from Playwright navigation/extraction and submission in this skill. Use a platform-authorized integration or perform LinkedIn actions manually.
+- CAPTCHA/MFA or other human verification stops the operation; the tool does not bypass it.
+- Discovery and matching are heuristic, not a guarantee of job fit. Inspect job descriptions before relying on a score.
+- Generic form filling does not yet include platform-specific selectors, resume upload workflows, or verified per-site success detection. A `submission_attempted` result is not proof of successful submission.
+- The auto-submit allowlist is a local safety gate, not a legal determination. Enable it only for sites and workflows that permit the intended automation.
+
 # Running Atlas
 
 ## Web research demo
