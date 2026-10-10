@@ -6,6 +6,7 @@ from crewai import Agent, Task, LLM
 import litellm
 from .tools.aider_tool import AiderExecutionTool
 from .tools.browser_tool import BrowserAutomationTool
+from .tools.job_application_tool import JobApplicationTool
 from .tools.key_manager import SmartFallbackRouter, ARCHITECT_CASCADE, WORKER_CASCADE
 
 # LiteLLM'in sessizce 20-30 dakika bekleyen sonsuz retry dongusunu KESINLIKLE DEVRE DISI BIRAK
@@ -172,6 +173,8 @@ class DynamicAgentFactory:
                     default_headless=self.headless,
                 )
             )
+        if any(cap in caps for cap in ("job_application", "jobs", "job_search")):
+            tools_list.append(JobApplicationTool())
         if "aider" in caps or "code" in caps or (task_type == "software_engineering" and not tools_list):
             tools_list.append(
                 AiderExecutionTool(
