@@ -300,6 +300,17 @@ class JobApplicationTool(BaseTool):
                         body = page.locator("body").inner_text(timeout=8000)
                         if self._captcha_detected(page, body):
                             return json.dumps({"success": False, "status": "human_verification_required", "url": page.url, "message": "CAPTCHA/insan doğrulaması algılandı; atlatılmadı."}, ensure_ascii=False)
+                        form_context = (page.title() + " " + body[:7000]).casefold()
+                        if not any(term in form_context for term in (
+                            "apply", "application", "career", "careers", "job", "position",
+                            "resume", "curriculum vitae", "iş başvuru", "iş ilan", "kariyer", "pozisyon", "cv",
+                        )):
+                            return json.dumps({
+                                "success": False,
+                                "status": "application_form_not_detected",
+                                "url": page.url,
+                                "message": "Sayfa iş başvurusu formu olarak doğrulanamadı; hiçbir alan doldurulmadı."
+                            }, ensure_ascii=False)
                         fill_result = self._fill_form(page, profile, answers)
                         result.update({"success": True, "status": "prepared_only", "url": page.url, "title": page.title(), "form_fill": fill_result})
                         if action == "submit":
