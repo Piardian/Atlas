@@ -457,6 +457,13 @@ class JobApplicationTool(BaseTool):
 
         try:
             profile_raw = self._parse_json(candidate_profile_json, "candidate_profile_json")
+            if not profile_raw:
+                candidate_file = Path("candidate_profile.json")
+                if candidate_file.is_file():
+                    try:
+                        profile_raw = json.loads(candidate_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
             answers = self._parse_json(answers_json, "answers_json")
         except ValueError as exc:
             return json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False)

@@ -243,14 +243,28 @@ class DynamicAgentFactory:
                     for term in ("iş ilan", "is ilan", "linkedin", "kariyer", "cv", "başvur", "basvur", "job application", "job search")
                 )
                 if job_task_requested:
+                    profile_summary = ""
+                    cand_file = Path("candidate_profile.json")
+                    if cand_file.is_file():
+                        try:
+                            cp = json.loads(cand_file.read_text(encoding="utf-8"))
+                            profile_summary = (
+                                f"\nADAY PROFİLİ: {cp.get('full_name')} ({cp.get('title')})\n"
+                                f"Konum: {cp.get('city')}, İletişim: {cp.get('email')} / {cp.get('phone')}\n"
+                                f"Yetkinlikler: {', '.join(cp.get('skills', []))}\n"
+                                f"CV Dosyası: {cp.get('resume_path')}\n"
+                            )
+                        except Exception:
+                            pass
                     task_desc = (
                         f"GÖREVİN: {role_name}\n{spec_context_str}\n"
                         f"Kullanıcı iş arama/başvuru talebi: {user_prompt}\n"
+                        f"{profile_summary}\n"
                         f"Özel talimat: {instruction}\n\n"
                         "KATI KURALLAR:\n"
                         "- İlan aramak, incelemek ve başvuru hazırlamak için 'Atlas Job Search & Application Tool' aracını kullan.\n"
                         "- Önce discover ile ilan bağlantılarını topla; sonra inspect ile ilan detaylarını doğrula ve aday profiline göre puanla.\n"
-                        "- Gerekirse prepare ile formu doldur ve istendiğinde submit ile başvuruyu tamamla.\n"
+                        "- prepare ile başvuru formunu aday bilgileriyle hazırla (kullanıcı onayı gerektirir, otomatik gönderilmez).\n"
                         "- LinkedIn dahil hedef platformlarda arama yap, ilan detaylarını çek ve CV eşleşme raporu hazırla.\n"
                         "- Elde edilen sonuçları, ilan bağlantılarını ve başvuru durumunu düzenli bir tablo halinde raporla."
                     )
