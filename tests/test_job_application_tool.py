@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from tools.job_application_tool import (
     _auto_submit_allowed,
+    _is_linkedin_url,
     _domain_matches,
     _flatten_profile,
     _score_text,
@@ -46,6 +47,11 @@ class JobApplicationToolHelpersTests(unittest.TestCase):
             denied, _ = _auto_submit_allowed("https://jobs.other.test/123")
         self.assertTrue(allowed)
         self.assertFalse(denied)
+
+    def test_linkedin_urls_are_recognized(self):
+        self.assertTrue(_is_linkedin_url("https://www.linkedin.com/jobs/view/123"))
+        self.assertTrue(_is_linkedin_url("https://careers.linkedin.com/jobs/123"))
+        self.assertFalse(_is_linkedin_url("https://linkedin.com.example.test/jobs/123"))
 
     def test_linkedin_submit_is_blocked_even_if_allowlisted(self):
         env = {
