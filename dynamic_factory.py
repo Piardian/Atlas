@@ -84,12 +84,16 @@ class DynamicAgentFactory:
             print(f"[DynamicFactory] JSON ayiklama uyarisi: {e}. Akilli '{task_type}' sablonu kullaniliyor.")
 
         if task_type == "web_research":
+            job_task_requested = any(
+                term in user_prompt.casefold()
+                for term in ("iş ilan", "is ilan", "linkedin", "kariyer", "cv", "başvur", "basvur", "job application", "job search")
+            )
             return [
                 {
                     "role": "Browser Research & Web Extraction Agent",
                     "goal": f"Gercek tarayici (Browser Use + Chromium) ile hedef web sitelerini ziyaret edip urunleri ve resmi iletisim bilgilerini cikarmak: {user_prompt}",
                     "backstory": "Teknoloji ekosistemleri, sirket kesfi, DOM analizi ve kurumsal iletisim verisi cikariminda uzman tarayici arastirma ajani.",
-                    "capabilities": ["browser"],
+                    "capabilities": ["browser", "job_application"] if job_task_requested else ["browser"],
                     "target_files": "WEB_RESEARCH_REPORT.md",
                     "instruction": (
                         f"Gorev kapsamindaki hedef sirketlerin resmi web sitelerini 'Browser Automation & Web Research Tool' araciyla ziyaret et; "
