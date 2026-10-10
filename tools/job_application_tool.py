@@ -102,14 +102,52 @@ def _clean_job_url(raw_url: str) -> str:
 
 
 def _score_text(profile: Dict[str, str], job_text: str) -> int:
-    """Explainable lexical baseline score between candidate profile and job posting."""
+    """
+    Kıdem Seviyesi (Seniority-Aware) ve Yetkinlik Uyum Puanlayıcı:
+    - Junior / Yeni Mezun / Yetiştirilmek Üzere ilanlara +35 bonus verir.
+    - 3-5+ yıl tecrübe, Senior, Kıdemli, Lead, Yönetici gerektiren ilanlara -45 ceza puanı uygular.
+    - Teknik terim benzerliğini (Cisco, CCNA, TCP/IP, Donanım, Ağ) orantılı olarak hesaba katar.
+    """
     profile_text = " ".join(profile.values())
-    tokens = set(re.findall(r"[a-z0-9çğıöşü+#.]{2,}", _normalise(profile_text)))
-    job_tokens = set(re.findall(r"[a-z0-9çğıöşü+#.]{2,}", _normalise(job_text)))
+    clean_job = _normalise(job_text)
+    clean_profile = _normalise(profile_text)
+
+    tokens = set(re.findall(r"[a-z0-9çğıöşü+#.]{2,}", clean_profile))
+    job_tokens = set(re.findall(r"[a-z0-9çğıöşü+#.]{2,}", clean_job))
     if not tokens or not job_tokens:
         return 0
+
     overlap = tokens & job_tokens
-    return min(100, round(100 * len(overlap) / max(1, min(len(tokens), 18))))
+    # Temel teknik yetkinlik skoru (azami 60 puan)
+    base_score = round(60 * len(overlap) / max(1, min(len(tokens), 16)))
+
+    # 1. Junior / Yeni Mezun / Giriş Seviyesi Bonus Kontrolü
+    junior_hints = [
+        "junior", "yeni mezun", "yetistirilmek uzere", "staj", "intern",
+        "yardimcisi", "asistan", "entry level", "giris seviyesi", "0 1 yil",
+        "0 2 yil", "1 2 yil", "teknisyen", "eleman", "destek elemani",
+        "ogrenmeye acik", "baslangic"
+    ]
+    junior_match_count = sum(1 for hint in junior_hints if hint in clean_job)
+    junior_bonus = min(35, junior_match_count * 15)
+
+    # 2. Senior / Kıdemli / Yüksek Deneyim Cezası
+    senior_penalty_hints = [
+        "senior", "kidemli", "lead", "en az 3 yil", "en az 4 yil", "en az 5 yil",
+        "en az 6 yil", "en az 7 yil", "en az 10 yil", "3 yil tecrube", "5 yil tecrube",
+        "mudur", "yonetici", "architect", "team lead", "takim lideri", "uzman kadrosu"
+    ]
+    has_senior_penalty = any(hint in clean_job for hint in senior_penalty_hints)
+
+    total_score = base_score + junior_bonus
+    if has_senior_penalty:
+        total_score -= 45
+
+    # Eğer ilanın doğrudan başlığında Senior/Lead geçiyorsa skoru en fazla %20 ile sınırla
+    if any(h in clean_job[:80] for h in ("senior", "kidemli", "lead", "yonetici")):
+        total_score = min(total_score, 20)
+
+    return max(0, min(100, total_score))
 
 
 class JobApplicationToolInput(BaseModel):

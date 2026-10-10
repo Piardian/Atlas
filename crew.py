@@ -246,11 +246,15 @@ class AiderCrewOrchestrator:
                 cand_file = Path("candidate_profile.json")
                 cand_profile_str = cand_file.read_text(encoding="utf-8") if cand_file.is_file() else "{}"
 
-                search_q = "Sistem ve Ağ Destek Uzmanı"
-                if "ağ" in user_prompt.casefold() or "network" in user_prompt.casefold():
-                    search_q = "Network Sistem Destek Uzmanı"
+                search_q = "Junior Sistem ve Ağ Destek"
+                if any(w in user_prompt.casefold() for w in ("junior", "yeni mezun", "staj", "yetistir")):
+                    search_q = "Junior Sistem ve Ağ Destek"
+                elif "ağ" in user_prompt.casefold() or "network" in user_prompt.casefold():
+                    search_q = "Junior Network Destek Elemanı"
                 elif "bilgi teknolojileri" in user_prompt.casefold() or "bt" in user_prompt.casefold():
-                    search_q = "Bilgi Teknolojileri Destek Uzmanı"
+                    search_q = "Yetiştirilmek Üzere Bilgi Teknolojileri Destek"
+                else:
+                    search_q = "Junior Sistem ve Ağ Destek Elemanı"
 
                 print(f"[Atlas Job Shield] 🔍 Canlı LinkedIn iş ilanları keşfediliyor: '{search_q}'...")
                 disc_res_str = job_tool._run(action="discover", search_query=search_q, candidate_profile_json=cand_profile_str, max_results=6, headless=self.headless)

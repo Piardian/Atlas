@@ -265,6 +265,8 @@ class DynamicAgentFactory:
                             cp = json.loads(cand_file.read_text(encoding="utf-8"))
                             profile_summary = (
                                 f"\nADAY PROFİLİ: {cp.get('full_name')} ({cp.get('title')})\n"
+                                f"Kıdem Seviyesi: {cp.get('seniority', 'Junior / Yeni Mezun / Giriş Seviyesi')}\n"
+                                f"Deneyim Düzeyi: {cp.get('experience_level', 'Yeni Mezun / Stajyerlik')}\n"
                                 f"Konum: {cp.get('city')}, İletişim: {cp.get('email')} / {cp.get('phone')}\n"
                                 f"Yetkinlikler: {', '.join(cp.get('skills', []))}\n"
                                 f"CV Dosyası: {cp.get('resume_path')}\n"
@@ -279,6 +281,7 @@ class DynamicAgentFactory:
                         "KATI KURALLAR:\n"
                         "- İlan aramak, incelemek ve başvuru süreçlerini yürütmek için 'Atlas Job Search & Application Tool' aracını kullan.\n"
                         "- Önce discover ile ilan bağlantılarını topla; sonra inspect ile ilan detaylarını doğrula ve aday profiline göre puanla.\n"
+                        "- ADAY KIDEMİ VE FİLTRELEME: Aday yeni mezun / junior seviyededir. Junior, Yeni Mezun, Yetiştirilmek Üzere, Stajyer, Uzman Yardımcısı ve Giriş Seviyesi pozisyonlarına öncelik ver. En az 3-5+ yıl tecrübe arayan Senior pozisyonları ele.\n"
                         "- En uygun ilanlara aday bilgileri ve CV ile submit işlemi yaparak başvuruyu gönder veya prepare ile hazırla.\n"
                         "- LinkedIn dahil hedef platformlarda arama yap, ilan detaylarını çek ve CV eşleşme raporu hazırla.\n"
                         "- Elde edilen sonuçları, ilan bağlantılarını ve başvuru gönderim durumunu düzenli bir tablo halinde raporla."
