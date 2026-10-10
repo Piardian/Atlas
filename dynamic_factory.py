@@ -234,17 +234,35 @@ class DynamicAgentFactory:
             parallel_agents.append(agent)
 
             if task_type == "web_research":
-                task_desc = (
-                    f"GÖREVİN: {role_name}\n"
-                    f"{spec_context_str}\n"
-                    f"Kullanıcı Araştırma Talebi: {user_prompt}\n"
-                    f"Özel Talimat: {instruction}\n\n"
-                    f"KATI ARAŞTIRMA KURALLARI:\n"
-                    f"- 'Browser Automation & Web Research Tool' aracını kullanarak gerçek web sitelerini ziyaret et.\n"
-                    f"- Ziyaret edilen resmi web sitesi adreslerini (URL), şirket ürünlerini/hizmetlerini ve iletişim bilgilerini eksiksiz çıkar.\n"
-                    f"- Asla hayali şirket veya uydurma iletişim bilgisi üretme; doğrudan tarayıcı çıktısına dayan."
+                job_task_requested = any(
+                    term in user_prompt.casefold()
+                    for term in ("iş ilan", "is ilan", "linkedin", "kariyer", "cv", "başvur", "basvur", "job application", "job search")
                 )
-                expected_out = f"{role_name} tarafından tarayıcı üzerinden toplanan doğrulanmış şirket, ürün ve iletişim bulguları."
+                if job_task_requested:
+                    task_desc = (
+                        f"GÖREVİN: {role_name}\n{spec_context_str}\n"
+                        f"Kullanıcı iş arama/başvuru talebi: {user_prompt}\n"
+                        f"Özel talimat: {instruction}\n\n"
+                        "KATI KURALLAR:\n"
+                        "- İlan aramak ve başvuru hazırlamak için 'Atlas Job Search & Application Tool' aracını kullan.\n"
+                        "- Önce discover ile ilan bağlantılarını topla; sonra inspect ile ilan detaylarını doğrula ve aday profiline göre puanla.\n"
+                        "- prepare formu doldurur ama göndermez. submit yalnızca yerel izin listesi ve platform politikası izin verdiğinde kullanılabilir.\n"
+                        "- LinkedIn üzerinde otomatik gezinme/veri çıkarma/başvuru yapma; insan doğrulamasını veya erişim kontrollerini atlatma.\n"
+                        "- CV'de olmayan bilgileri uydurma; ilan URL'si ve başvuru durumunu raporla."
+                    )
+                    expected_out = f"{role_name} tarafından toplanan, puanlanan iş ilanları ve başvuru durum raporu."
+                else:
+                    task_desc = (
+                        f"GÖREVİN: {role_name}\n"
+                        f"{spec_context_str}\n"
+                        f"Kullanıcı Araştırma Talebi: {user_prompt}\n"
+                        f"Özel Talimat: {instruction}\n\n"
+                        f"KATI ARAŞTIRMA KURALLARI:\n"
+                        f"- 'Browser Automation & Web Research Tool' aracını kullanarak gerçek web sitelerini ziyaret et.\n"
+                        f"- Ziyaret edilen resmi web sitesi adreslerini (URL), şirket ürünlerini/hizmetlerini ve iletişim bilgilerini eksiksiz çıkar.\n"
+                        f"- Asla hayali şirket veya uydurma iletişim bilgisi üretme; doğrudan tarayıcı çıktısına dayan."
+                    )
+                    expected_out = f"{role_name} tarafından tarayıcı üzerinden toplanan doğrulanmış şirket, ürün ve iletişim bulguları."
                 is_async = False
             else:
                 task_desc = (
