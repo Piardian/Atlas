@@ -50,7 +50,12 @@ _TECH_SKILLS = [
     "kubernetes", "sql", "postgresql", "mongodb", "git", "linux",
     "aws", "gcp", "azure", "pandas", "numpy", "c++", "golang", "java",
     "typescript", "react", "next.js", "data science", "etl", "spark",
-    "playwright", "selenium", "prompt engineering"
+    "playwright", "selenium", "prompt engineering",
+    "cisco", "ccna", "network", "system", "ağ", "sistem", "switch", "router",
+    "firewall", "vlan", "tcp/ip", "dhcp", "dns", "lan", "wan", "active directory",
+    "windows server", "it support", "destek", "vpn", "routing", "switching",
+    "donanım", "hardware", "wifi", "voip", "fortinet", "palo alto", "vmware", "hyper-v",
+    "help desk", "bt uzmanı", "bilgi işlem", "sunucu", "yedekleme", "backup"
 ]
 
 

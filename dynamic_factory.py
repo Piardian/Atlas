@@ -1,6 +1,7 @@
 import os
 import json
 import re
+from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 from crewai import Agent, Task, LLM
 import litellm
@@ -88,12 +89,26 @@ class DynamicAgentFactory:
                 term in user_prompt.casefold()
                 for term in ("iş ilan", "is ilan", "linkedin", "kariyer", "cv", "başvur", "basvur", "job application", "job search")
             )
+            if job_task_requested:
+                return [
+                    {
+                        "role": "Job Search & Career Application Specialist",
+                        "goal": f"Aday icin en uygun is ilanlarini arastirmak, incelemek ve basvuru surecini hazirlamak: {user_prompt}",
+                        "backstory": "İş ilanları, kariyer portalları, CV eşleştirme ve başvuru formları yönetiminde uzman otonom kariyer ajanı.",
+                        "capabilities": ["job_application"],
+                        "target_files": "WEB_RESEARCH_REPORT.md",
+                        "instruction": (
+                            "Atlas Job Search & Application Tool aracını kullanarak ilanları discover et, inspect ile detaylarını inceleyip CV eşleşme puanını hesapla, "
+                            "prepare ile başvuru formunu kullanıcı onayıyla hazırla ve kapsamlı bir rapor oluştur."
+                        ),
+                    }
+                ]
             return [
                 {
                     "role": "Browser Research & Web Extraction Agent",
                     "goal": f"Gercek tarayici (Browser Use + Chromium) ile hedef web sitelerini ziyaret edip urunleri ve resmi iletisim bilgilerini cikarmak: {user_prompt}",
                     "backstory": "Teknoloji ekosistemleri, sirket kesfi, DOM analizi ve kurumsal iletisim verisi cikariminda uzman tarayici arastirma ajani.",
-                    "capabilities": ["browser", "job_application"] if job_task_requested else ["browser"],
+                    "capabilities": ["browser"],
                     "target_files": "WEB_RESEARCH_REPORT.md",
                     "instruction": (
                         f"Gorev kapsamindaki hedef sirketlerin resmi web sitelerini 'Browser Automation & Web Research Tool' araciyla ziyaret et; "
@@ -167,7 +182,9 @@ class DynamicAgentFactory:
                 caps = ["aider"]
 
         tools_list: List[Any] = []
-        if "browser" in caps or "web" in caps or task_type == "web_research":
+        if any(cap in caps for cap in ("job_application", "jobs", "job_search")):
+            tools_list.append(JobApplicationTool())
+        elif "browser" in caps or "web" in caps or task_type == "web_research":
             tools_list.append(
                 BrowserAutomationTool(
                     default_working_dir=self.workspace_dir,
@@ -177,8 +194,6 @@ class DynamicAgentFactory:
                     default_headless=self.headless,
                 )
             )
-        if any(cap in caps for cap in ("job_application", "jobs", "job_search")):
-            tools_list.append(JobApplicationTool())
         if "aider" in caps or "code" in caps or (task_type == "software_engineering" and not tools_list):
             tools_list.append(
                 AiderExecutionTool(
@@ -309,35 +324,67 @@ class DynamicAgentFactory:
         reviewer_llm = get_resilient_llm(tier="reviewer", agent_idx=1)
 
         if task_type == "web_research":
-            reviewer_agent = Agent(
-                role="Lead Research Reviewer & Structured Report Synthesizer",
-                goal=(
-                    "Araştırma ve Tarayıcı ajanlarından gelen tüm bulguları denetlemek, eksik veya tutarsız bilgileri "
-                    "ayıklamak ve kullanıcının istediği nihai yapılandırılmış Markdown tablo raporunu oluşturmak."
-                ),
-                backstory=(
-                    "Sen kurumsal araştırma kalitesi ve veri doğrulamasından sorumlu Baş Denetleyicisin. "
-                    "Tarayıcı ajanlarının topladığı ham web verilerini eksiksiz, kanıtlı ve net bir tabloya dönüştürürsün."
-                ),
-                llm=reviewer_llm,
-                tools=[],
-                verbose=True,
-                allow_delegation=False,
+            job_task_requested = any(
+                term in user_prompt.casefold()
+                for term in ("iş ilan", "is ilan", "linkedin", "kariyer", "cv", "başvur", "basvur", "job application", "job search")
             )
-
-            review_task = Task(
-                description=(
-                    f"Araştırma ajanlarının topladığı tüm web verilerini incele ve doğrula:\n"
-                    f"Kullanıcı Talebi: {user_prompt}\n\n"
-                    f"1. Tüm hedef şirketlerin/kaynakların isimlerini, resmi web sitelerini, ana yapay zeka ürünlerini ve iletişim bilgilerini kontrol et.\n"
-                    f"2. Sonuçları hem özet Markdown tablosu (| # | Şirket Adı | Web Sitesi | Ürünler & Çözümler | İletişim Bilgileri |) "
-                    f"hem de şirket bazlı detaylı alt başlıklar halinde Türkçe olarak raporla.\n"
-                    f"3. Raporun sonunda ziyaret edilen kaynak URL'leri kanıt olarak listele."
-                ),
-                expected_output="Markdown tablosu ve detaylı şirket profillerini içeren doğrulanmış nihai araştırma raporu.",
-                agent=reviewer_agent,
-                context=parallel_tasks,
-            )
+            if job_task_requested:
+                reviewer_agent = Agent(
+                    role="Lead Career & Verification Specialist",
+                    goal=(
+                        "İş ilanı arama ajanından gelen bulguları denetlemek, Ömer Demircan profiliyle CV eşleşme oranlarını "
+                        "doğrulamak ve nihai iş arama / başvuru hazırlık raporunu oluşturmak."
+                    ),
+                    backstory=(
+                        "Kariyer fırsatlarını, teknik gereksinimleri ve başvuru onay süreçlerini titizlikle denetleyen kıdemli analist."
+                    ),
+                    llm=reviewer_llm,
+                    tools=[],
+                    verbose=True,
+                    allow_delegation=False,
+                )
+                review_task = Task(
+                    description=(
+                        f"İş arama ajanının topladığı tüm ilan verilerini incele ve doğrula:\n"
+                        f"Kullanıcı Talebi: {user_prompt}\n\n"
+                        f"1. Bulunan iş ilanlarını, pozisyonları, şirketleri, konumları ve CV eşleşme oranlarını (%) kontrol et.\n"
+                        f"2. Sonuçları özet Markdown tablosu (| # | Şirket / Pozisyon | Konum | CV Uyumu (%) | Tespit Edilen Gereksinimler | İlan Bağlantısı |) "
+                        f"ve şirket bazlı detaylı gereksinim analizleri halinde Türkçe olarak raporla.\n"
+                        f"3. Başvuru hazırlık durumunu (kullanıcı onayı gerekliliği ve otomatik gönderimin kapalı olduğunu) net şekilde belirt."
+                    ),
+                    expected_output="Markdown iş ilanları karşılaştırma tablosu, aday uyum analizi ve başvuru durum raporu.",
+                    agent=reviewer_agent,
+                    context=parallel_tasks,
+                )
+            else:
+                reviewer_agent = Agent(
+                    role="Lead Research Reviewer & Structured Report Synthesizer",
+                    goal=(
+                        "Araştırma ve Tarayıcı ajanlarından gelen tüm bulguları denetlemek, eksik veya tutarsız bilgileri "
+                        "ayıklamak ve kullanıcının istediği nihai yapılandırılmış Markdown tablo raporunu oluşturmak."
+                    ),
+                    backstory=(
+                        "Sen kurumsal araştırma kalitesi ve veri doğrulamasından sorumlu Baş Denetleyicisin. "
+                        "Tarayıcı ajanlarının topladığı ham web verilerini eksiksiz, kanıtlı ve net bir tabloya dönüştürürsün."
+                    ),
+                    llm=reviewer_llm,
+                    tools=[],
+                    verbose=True,
+                    allow_delegation=False,
+                )
+                review_task = Task(
+                    description=(
+                        f"Araştırma ajanlarının topladığı tüm web verilerini incele ve doğrula:\n"
+                        f"Kullanıcı Talebi: {user_prompt}\n\n"
+                        f"1. Tüm hedef şirketlerin/kaynakların isimlerini, resmi web sitelerini, ana yapay zeka ürünlerini ve iletişim bilgilerini kontrol et.\n"
+                        f"2. Sonuçları hem özet Markdown tablosu (| # | Şirket Adı | Web Sitesi | Ürünler & Çözümler | İletişim Bilgileri |) "
+                        f"hem de şirket bazlı detaylı alt başlıklar halinde Türkçe olarak raporla.\n"
+                        f"3. Raporun sonunda ziyaret edilen kaynak URL'leri kanıt olarak listele."
+                    ),
+                    expected_output="Markdown tablosu ve detaylı şirket profillerini içeren doğrulanmış nihai araştırma raporu.",
+                    agent=reviewer_agent,
+                    context=parallel_tasks,
+                )
         else:
             reviewer_aider_tool = AiderExecutionTool(
                 default_working_dir=self.workspace_dir,
