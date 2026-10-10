@@ -69,7 +69,10 @@ class AiderCrewOrchestrator:
         blueprint_output = ""
         max_arch_attempts = 2 if task_type == "web_research" else 8
 
+        job_task_requested = any(term in user_prompt.casefold() for term in ("iş ilan", "is ilan", "linkedin", "kariyer", "cv", "başvur", "basvur", "job application", "job search"))
+
         if task_type == "web_research":
+            job_capabilities = '["browser", "job_application"]' if job_task_requested else '["browser"]'
             arch_system_prompt = (
                 "Sen Kıdemli Baş Araştırma Mimarısın. Verilen web araştırma görevini gerçek tarayıcı (Browser Use + Chromium) "
                 "ile yürütecek UZMAN TARAYICI ARAŞTIRMA AJANINI belirle.\n"
@@ -82,9 +85,9 @@ class AiderCrewOrchestrator:
                 '      "role": "Browser Research & Web Extraction Agent",\n'
                 '      "goal": "Hedef şirketlerin resmi web sitelerini Browser Use ile ziyaret edip ürünleri ve iletişim bilgilerini çıkarmak",\n'
                 '      "backstory": "Gerçek tarayıcı otomasyonu, DOM analizi ve kurumsal veri çıkarım uzmanı",\n'
-                '      "capabilities": ["browser"],\n'
+                '      "capabilities": ' + job_capabilities + ',\n'
                 '      "target_files": "WEB_RESEARCH_REPORT.md",\n'
-                '      "instruction": "Browser Automation & Web Research Tool aracını kullanarak resmi web sitelerini ziyaret et, ürünleri ve iletişim bilgilerini çıkar"\n'
+                '      "instruction": "Web araştırma veya iş arama talebini ilgili aracı kullanarak yürüt; iş başvurularında yalnızca platformun izin verdiği akışları kullan, doğrulama kontrollerini aşma"\n'
                 '    }\n'
                 '  ]\n'
                 "}"
