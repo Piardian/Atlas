@@ -1,8 +1,8 @@
 """Job-search and application capability for Atlas.
 
 Uses a persistent Playwright browser profile. Automated submission is disabled by
-default and requires an explicitly configured allowlist. LinkedIn submission is
-intentionally not automated; discovery and preparation remain available.
+default and requires an explicitly configured allowlist. LinkedIn automation is
+intentionally blocked in this skill; use an authorized integration or manual flow.
 """
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ class JobApplicationTool(BaseTool):
     def __init__(self, profile_dir: Optional[str] = None, **kwargs: Any):
         super().__init__(**kwargs)
         default_dir = Path.home() / ".atlas" / "browser_profiles" / "jobs"
-        self._profile_dir = Path(profile_dir or os.getenv("ATLAS_JOB_BROWSER_PROFILE", str(default_dir))).expanduser()
+        self._profile_dir = Path(profile_dir or os.getenv("ATLAS_JOB_BROWSER_PROFILE") or str(default_dir)).expanduser()
 
     @staticmethod
     def _parse_json(raw: str, label: str) -> Dict[str, Any]:
