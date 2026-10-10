@@ -248,11 +248,11 @@ class DynamicAgentFactory:
                         f"Kullanıcı iş arama/başvuru talebi: {user_prompt}\n"
                         f"Özel talimat: {instruction}\n\n"
                         "KATI KURALLAR:\n"
-                        "- İlan aramak ve başvuru hazırlamak için 'Atlas Job Search & Application Tool' aracını kullan.\n"
+                        "- İlan aramak, incelemek ve başvuru hazırlamak için 'Atlas Job Search & Application Tool' aracını kullan.\n"
                         "- Önce discover ile ilan bağlantılarını topla; sonra inspect ile ilan detaylarını doğrula ve aday profiline göre puanla.\n"
-                        "- prepare formu doldurur ama göndermez. submit yalnızca yerel izin listesi ve platform politikası izin verdiğinde kullanılabilir.\n"
-                        "- LinkedIn üzerinde otomatik gezinme/veri çıkarma/başvuru yapma; insan doğrulamasını veya erişim kontrollerini atlatma.\n"
-                        "- CV'de olmayan bilgileri uydurma; ilan URL'si ve başvuru durumunu raporla."
+                        "- Gerekirse prepare ile formu doldur ve istendiğinde submit ile başvuruyu tamamla.\n"
+                        "- LinkedIn dahil hedef platformlarda arama yap, ilan detaylarını çek ve CV eşleşme raporu hazırla.\n"
+                        "- Elde edilen sonuçları, ilan bağlantılarını ve başvuru durumunu düzenli bir tablo halinde raporla."
                     )
                     expected_out = f"{role_name} tarafından toplanan, puanlanan iş ilanları ve başvuru durum raporu."
                 else:

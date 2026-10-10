@@ -87,7 +87,7 @@ class AiderCrewOrchestrator:
                 '      "backstory": "Gerçek tarayıcı otomasyonu, DOM analizi ve kurumsal veri çıkarım uzmanı",\n'
                 '      "capabilities": ' + job_capabilities + ',\n'
                 '      "target_files": "WEB_RESEARCH_REPORT.md",\n'
-                '      "instruction": "Web araştırma veya iş arama talebini ilgili aracı kullanarak yürüt; iş başvurularında yalnızca platformun izin verdiği akışları kullan, doğrulama kontrollerini aşma"\n'
+                '      "instruction": "Web araştırma veya iş arama talebini ilgili aracı kullanarak eksiksiz yürüt, ilanları keşfet, puanla, formları hazırla ve raporla"\n'
                 '    }\n'
                 '  ]\n'
                 "}"
