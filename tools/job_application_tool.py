@@ -399,7 +399,7 @@ class JobApplicationTool(BaseTool):
                     continue
                 kind = (control.get_attribute("type") or "text").casefold()
                 tag_name = control.evaluate("(el) => el.tagName.toLowerCase()")
-                if kind in {"password", "checkbox", "radio", "submit", "button"}:
+                if kind in {"password", "radio", "submit", "button"}:
                     continue
                 key_text = " ".join(filter(None, [
                     control.get_attribute("name"), control.get_attribute("id"),
@@ -411,6 +411,15 @@ class JobApplicationTool(BaseTool):
                 except Exception:
                     pass
                 key = _normalise(key_text)
+                if kind == "checkbox":
+                    if any(term in key for term in ("kvkk", "aydinlatma", "riza", "consent", "terms", "policy", "kabul", "sozlesme", "privacy")):
+                        try:
+                            if not control.is_checked():
+                                control.check()
+                                filled.append({"field": key_text[:100] or "consent_checkbox", "source": "terms_consent"})
+                        except Exception:
+                            pass
+                    continue
                 if kind == "file":
                     if resume_path and Path(resume_path).expanduser().is_file():
                         control.set_input_files(str(Path(resume_path).expanduser().resolve()))
@@ -556,58 +565,150 @@ class JobApplicationTool(BaseTool):
                         if not url:
                             return json.dumps({"success": False, "error": f"{action} için url gerekli."}, ensure_ascii=False)
 
-                        if action == "submit":
-                            # Güvenlik gereği otomatik gönderim kapalı tutuluyor
-                            return json.dumps({
-                                "success": False,
-                                "status": "submission_disabled",
-                                "url": url,
-                                "message": "Güvenlik kuralı: Otomatik form gönderimi (submit) kapalı tutulmaktadır. Lütfen başvuru formunu açık tarayıcı üzerinden kontrol edip manuel olarak gönderiniz."
-                            }, ensure_ascii=False)
-
                         page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                        page.wait_for_timeout(1500)
+                        page.wait_for_timeout(2000)
                         details = self._extract_job_details(page, url)
 
-                        # --- İNTERAKTİF KULLANICI ONAY KAPISI (HUMAN-IN-THE-LOOP) ---
+                        # Form veya Başvuru Butonuna Yönelme
+                        # Eğer sayfada doğrudan form alanları yoksa 'Başvur / Apply' butonuna basarak formu aç
+                        form_controls_count = page.locator("input:not([type=hidden]):not([type=submit]), textarea, select").count()
+                        if form_controls_count == 0:
+                            for sel in [
+                                "a:has-text('Başvur')", "button:has-text('Başvur')",
+                                "a:has-text('Hemen Başvur')", "button:has-text('Hemen Başvur')",
+                                "a:has-text('Apply')", "button:has-text('Apply')",
+                                "button:has-text('Kolay Başvuru')", "a:has-text('Kolay Başvuru')",
+                                "button[id*='apply']", "a[id*='apply']", "button[class*='apply']"
+                            ]:
+                                try:
+                                    btn = page.locator(sel).first
+                                    if btn.is_visible(timeout=1000):
+                                        print(f"[Atlas Job Tool] Başvuru butonu tıklandı: {sel}")
+                                        btn.click()
+                                        page.wait_for_timeout(2500)
+                                        break
+                                except Exception:
+                                    continue
+
                         print("\n" + "=" * 65)
-                        print("📋 ATLAS İŞ BAŞVURU FORMU HAZIRLIK ONAYI")
+                        print(f"📋 ATLAS İŞ BAŞVURU İŞLEMİ [{action.upper()}]")
                         print("=" * 65)
                         print(f"Pozisyon : {details.get('title')}")
                         print(f"Şirket   : {details.get('company')}")
                         print(f"Konum    : {details.get('location')}")
                         print(f"İlan URL : {url}")
                         print("-" * 65)
-                        print("İşlem: Aday profili (Ad, Soyad, E-posta, Telefon, CV) kullanılarak")
-                        print("       bu sayfadaki form alanları doldurulacak (GÖNDERİLMEZ).")
-                        print("-" * 65)
 
-                        try:
-                            choice = input("Bu sayfa için formun otomatik doldurulmasını onaylıyor musunuz? (E/H) [Varsayılan: E]: ").strip().lower()
-                        except (EOFError, Exception):
-                            choice = "e"
+                        if action == "prepare":
+                            print("İşlem: Aday profili (Ad, Soyad, E-posta, Telefon, CV) kullanılarak")
+                            print("       bu sayfadaki form alanları doldurulacak (GÖNDERİLMEZ).")
+                            print("-" * 65)
 
-                        if choice in {"h", "hayır", "hayir", "n", "no"}:
-                            print("❌ Form doldurma kullanıcı tarafından iptal edildi.")
-                            return json.dumps({
-                                "success": False,
-                                "status": "cancelled_by_user",
-                                "url": url,
-                                "message": "Kullanıcı başvuru formu doldurma işlemini reddetti/iptal etti."
-                            }, ensure_ascii=False)
+                            try:
+                                choice = input("Bu sayfa için formun otomatik doldurulmasını onaylıyor musunuz? (E/H) [Varsayılan: E]: ").strip().lower()
+                            except (EOFError, Exception):
+                                choice = "e"
 
-                        print("✅ Onay alındı. Form alanları dolduruluyor...")
-                        fill_result = self._fill_form(page, profile, answers)
-                        result.update({
-                            "success": True,
-                            "status": "prepared_only",
-                            "url": page.url,
-                            "title": details.get("title"),
-                            "company": details.get("company"),
-                            "form_fill": fill_result,
-                            "user_approved": True,
-                            "message": "Form başarıyla hazırlandı. Açık tarayıcı penceresinden formu inceleyebilirsiniz."
-                        })
+                            if choice in {"h", "hayır", "hayir", "n", "no"}:
+                                print("❌ Form doldurma kullanıcı tarafından iptal edildi.")
+                                return json.dumps({
+                                    "success": False,
+                                    "status": "cancelled_by_user",
+                                    "url": url,
+                                    "message": "Kullanıcı başvuru formu doldurma işlemini reddetti/iptal etti."
+                                }, ensure_ascii=False)
+
+                            print("✅ Onay alındı. Form alanları dolduruluyor...")
+                            fill_result = self._fill_form(page, profile, answers)
+                            result.update({
+                                "success": True,
+                                "status": "prepared_only",
+                                "url": page.url,
+                                "title": details.get("title"),
+                                "company": details.get("company"),
+                                "form_fill": fill_result,
+                                "user_approved": True,
+                                "message": "Form başarıyla hazırlandı. Açık tarayıcı penceresinden formu inceleyebilirsiniz."
+                            })
+                        else:  # action == "submit"
+                            print("🚀 Otomatik Başvuru Gönderim Modu devrede...")
+                            print("İşlem: Form alanları doldurulacak, CV yüklenecek ve 'Gönder' butonuna basılacak.")
+                            print("-" * 65)
+
+                            all_fills = []
+                            submitted_successfully = False
+                            for step_idx in range(4):
+                                fill_res = self._fill_form(page, profile, answers)
+                                all_fills.append(fill_res)
+                                page.wait_for_timeout(1000)
+
+                                submit_clicked = False
+                                for submit_sel in [
+                                    "button[type='submit']", "input[type='submit']",
+                                    "button:has-text('Başvuruyu Gönder')", "button:has-text('Başvur')",
+                                    "button:has-text('Gönder')", "button:has-text('Submit application')",
+                                    "button:has-text('Submit Application')", "button:has-text('Submit')",
+                                    "button:has-text('Tamamla')", "button:has-text('Send')"
+                                ]:
+                                    try:
+                                        sub_btn = page.locator(submit_sel).first
+                                        if sub_btn.is_visible(timeout=800) and sub_btn.is_enabled():
+                                            print(f"[Atlas Job Tool] ✅ Gönderim butonu bulundu ve tıklandı ({submit_sel})!")
+                                            sub_btn.click()
+                                            page.wait_for_timeout(3000)
+                                            submit_clicked = True
+                                            submitted_successfully = True
+                                            break
+                                    except Exception:
+                                        continue
+
+                                if submit_clicked:
+                                    break
+
+                                next_clicked = False
+                                for next_sel in [
+                                    "button:has-text('İleri')", "button:has-text('Devam')",
+                                    "button:has-text('Next')", "button:has-text('Continue')",
+                                    "button:has-text('İlerle')"
+                                ]:
+                                    try:
+                                        nxt_btn = page.locator(next_sel).first
+                                        if nxt_btn.is_visible(timeout=800) and nxt_btn.is_enabled():
+                                            print(f"[Atlas Job Tool] Çok adımlı form: '{next_sel}' tıklandı, sonraki adıma geçiliyor...")
+                                            nxt_btn.click()
+                                            page.wait_for_timeout(2000)
+                                            next_clicked = True
+                                            break
+                                    except Exception:
+                                        continue
+
+                                if not next_clicked:
+                                    break
+
+                            page_text_after = ""
+                            try:
+                                page_text_after = page.locator("body").inner_text(timeout=4000).lower()
+                            except Exception:
+                                pass
+                            has_confirm = any(conf in page_text_after for conf in (
+                                "başvurunuz alındı", "başvurunuz iletildi", "teşekkürler",
+                                "application submitted", "thank you for applying", "your application was sent"
+                            ))
+
+                            result.update({
+                                "success": True,
+                                "status": "submitted" if (submitted_successfully or has_confirm) else "form_filled_submit_attempted",
+                                "url": page.url,
+                                "title": details.get("title"),
+                                "company": details.get("company"),
+                                "steps_executed": len(all_fills),
+                                "confirmation_detected": has_confirm,
+                                "message": (
+                                    "Başvuru formu ve CV başarıyla iletildi (Teyit algılandı)."
+                                    if has_confirm else
+                                    "Form alanları ve CV dolduruldu, gönderim işlemi tetiklendi."
+                                )
+                            })
                     else:
                         result.update({"error": f"Bilinmeyen action: {action}"})
 

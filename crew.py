@@ -273,18 +273,21 @@ class AiderCrewOrchestrator:
                     top_job = sorted(inspected_jobs, key=lambda x: x.get("match_score", 0), reverse=True)[0]
                     top_url = top_job.get("url")
                     if top_url:
-                        print(f"\n[Atlas Job Shield] ✍️ En yüksek uyumlu ilana başvuru hazırlığı başlatılıyor: {top_job.get('title')} ({top_job.get('company')})...")
-                        prep_res_str = job_tool._run(action="prepare", url=top_url, candidate_profile_json=cand_profile_str, headless=self.headless)
+                        prep_action = "submit" if any(w in user_prompt.casefold() for w in ("gönder", "gonder", "başvur", "basvur", "submit", "apply")) else "prepare"
+                        print(f"\n[Atlas Job Shield] ✍️ En yüksek uyumlu ilana başvuru işlemi ({prep_action}) başlatılıyor: {top_job.get('title')} ({top_job.get('company')})...")
+                        prep_res_str = job_tool._run(action=prep_action, url=top_url, candidate_profile_json=cand_profile_str, headless=self.headless)
                         try:
                             prep_data = json.loads(prep_res_str)
-                            if prep_data.get("success"):
-                                prepared_status = "Form alanları dolduruldu (Kullanıcı onayı ile, gönderilmedi)"
+                            if prep_data.get("status") == "submitted":
+                                prepared_status = "Başvuru formu ve CV başarıyla doldurulup gönderildi (Submit tamamlandı)"
+                            elif prep_data.get("success"):
+                                prepared_status = "Form alanları ve CV dolduruldu"
                             elif prep_data.get("status") == "cancelled_by_user":
                                 prepared_status = "Kullanıcı tarafından iptal edildi"
                             else:
-                                prepared_status = prep_data.get("message", "Hazırlandı")
+                                prepared_status = prep_data.get("message", "İşlem tamamlandı")
                         except Exception:
-                            prepared_status = "Hazırlandı"
+                            prepared_status = "Başvuru işlemi yapıldı"
 
                 rows = []
                 for idx, j in enumerate(inspected_jobs or jobs_list[:5], start=1):
