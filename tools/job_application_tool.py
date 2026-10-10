@@ -56,6 +56,11 @@ def _domain_matches(host: str, allowed_domain: str) -> bool:
     return bool(allowed_domain) and (host == allowed_domain or host.endswith("." + allowed_domain))
 
 
+def _is_linkedin_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").casefold()
+    return _domain_matches(host, "linkedin.com")
+
+
 def _auto_submit_allowed(url: str) -> tuple[bool, str]:
     host = (urlparse(url).hostname or "").casefold()
     if not host:
@@ -234,7 +239,7 @@ class JobApplicationTool(BaseTool):
         except ImportError:
             return "Playwright yüklü değil. Kurulum: pip install playwright && playwright install chromium"
 
-        if url and _domain_matches((urlparse(url).hostname or ""), "linkedin.com"):
+        if url and _is_linkedin_url(url):
             return json.dumps({
                 "success": False,
                 "status": "platform_automation_disabled",
@@ -269,6 +274,8 @@ class JobApplicationTool(BaseTool):
                                 return json.dumps({"success": False, "error": "discover için url veya search_query gerekli."}, ensure_ascii=False)
                             target = "https://html.duckduckgo.com/html/?q=" + quote_plus(search_query + " jobs careers")
                         page.goto(target, wait_until="domcontentloaded", timeout=45000)
+                        if _is_linkedin_url(page.url):
+                            return json.dumps({"success": False, "status": "platform_automation_disabled", "url": page.url}, ensure_ascii=False)
                         page.wait_for_timeout(900)
                         body = page.locator("body").inner_text(timeout=5000)
                         if self._captcha_detected(page, body):
@@ -284,6 +291,8 @@ class JobApplicationTool(BaseTool):
                         if not url:
                             return json.dumps({"success": False, "error": "inspect için url gerekli."}, ensure_ascii=False)
                         page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                        if _is_linkedin_url(page.url):
+                            return json.dumps({"success": False, "status": "platform_automation_disabled", "url": page.url}, ensure_ascii=False)
                         page.wait_for_timeout(500)
                         body = page.locator("body").inner_text(timeout=8000)
                         if self._captcha_detected(page, body):
@@ -296,6 +305,8 @@ class JobApplicationTool(BaseTool):
                         if action == "submit" and not allowed:
                             return json.dumps({"success": False, "status": "submission_blocked", "url": url, "reason": reason}, ensure_ascii=False)
                         page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                        if _is_linkedin_url(page.url):
+                            return json.dumps({"success": False, "status": "platform_automation_disabled", "url": page.url}, ensure_ascii=False)
                         page.wait_for_timeout(500)
                         body = page.locator("body").inner_text(timeout=8000)
                         if self._captcha_detected(page, body):
