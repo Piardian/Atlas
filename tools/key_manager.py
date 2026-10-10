@@ -7,22 +7,22 @@ from dotenv import load_dotenv
 
 FALLBACK_ENV_PATH = Path(r"C:\Users\piard\Downloads\orkestrat-r-test9-fixed\agent-core\.env")
 
-# 1. KURAL: Bas Mimar & Denetleyici (En yuksek erisilebilirlik ve hiz sirasiyla 3.1-flash-lite -> Gemma 4 26B -> 3.7 -> 3.6 -> 3.8)
+# 1. KURAL: Bas Mimar & Denetleyici (En akilli modelden baslayip kota asiminda kademeli dusus: 3.8 -> 3.7 -> 3.6 -> 3.1-flash-lite -> Gemma)
 ARCHITECT_CASCADE = [
-    "gemini/gemini-3.1-flash-lite",
-    "gemini/gemma-4-26b-a4b-it",
+    "gemini/gemini-3.8-flash",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
-    "gemini/gemini-3.8-flash",
+    "gemini/gemini-3.1-flash-lite",
+    "gemini/gemma-4-26b-a4b-it",
 ]
 
-# 2. KURAL: Calisanlar ve BrowserUse Ajanlari (Yuksek gunluk kotali ve dusuk gecikmeli 3.1-flash-lite -> Gemma 4 26B -> 3.5-flash-lite -> 3.6 -> 3.7)
+# 2. KURAL: Calisanlar ve Browser Ajanlari (3.7 -> 3.6 -> 3.1-flash-lite -> 3.5-flash-lite -> Gemma)
 WORKER_CASCADE = [
-    "gemini/gemini-3.1-flash-lite",
-    "gemini/gemma-4-26b-a4b-it",
-    "gemini/gemini-3.5-flash-lite",
-    "gemini/gemini-3.6-flash",
     "gemini/gemini-3.7-flash",
+    "gemini/gemini-3.6-flash",
+    "gemini/gemini-3.1-flash-lite",
+    "gemini/gemini-3.5-flash-lite",
+    "gemini/gemma-4-26b-a4b-it",
 ]
 
 
