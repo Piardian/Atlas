@@ -168,6 +168,56 @@ class JobApplicationTool(BaseTool):
         return candidates
 
     @staticmethod
+    def _find_application_submit(page: Any) -> Any:
+        """Return a submit control only from a form that resembles an application form."""
+        forms = page.locator("form")
+        application_hints = (
+            "application", "apply", "resume", "cover letter", "work experience",
+            "first name", "last name", "job title", "cv", "iş başvuru", "başvur",
+            "özgeçmiş", "ozgecmis", "kariyer",
+        )
+        for index in range(min(forms.count(), 30)):
+            form = forms.nth(index)
+            try:
+                if not form.is_visible():
+                    continue
+                form_text = form.inner_text(timeout=500).casefold()
+                if not any(hint in form_text for hint in application_hints):
+                    continue
+                fields = form.locator(
+                    'input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]), textarea, select'
+                )
+                if fields.count() < 2:
+                    continue
+                submit = form.locator('button:not([type="button"]), input[type="submit"]')
+                if submit.count() and submit.first.is_visible() and submit.first.is_enabled():
+                    return submit.first
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _required_fields_missing(page: Any) -> List[str]:
+        missing: List[str] = []
+        required = page.locator('[required]')
+        for index in range(min(required.count(), 80)):
+            field = required.nth(index)
+            try:
+                if not field.is_visible() or not field.is_enabled():
+                    continue
+                kind = (field.get_attribute("type") or "").casefold()
+                if kind in {"checkbox", "radio"}:
+                    if not field.is_checked():
+                        missing.append(field.get_attribute("name") or field.get_attribute("id") or f"required_{index}")
+                    continue
+                value = field.input_value(timeout=300) if kind != "file" else (field.get_attribute("value") or "")
+                if not value.strip():
+                    missing.append(field.get_attribute("name") or field.get_attribute("id") or f"required_{index}")
+            except Exception:
+                continue
+        return missing
+
+    @staticmethod
     def _fill_form(page: Any, profile: Dict[str, str], answers: Dict[str, Any]) -> Dict[str, Any]:
         values: Dict[str, str] = {}
         values.update(profile)
@@ -329,12 +379,17 @@ class JobApplicationTool(BaseTool):
                             allowed, reason = _auto_submit_allowed(page.url)
                             if not allowed:
                                 result.update({"success": False, "status": "submission_blocked", "reason": reason})
+                            elif not fill_result["filled"]:
+                                result.update({"success": False, "status": "no_application_fields_filled", "message": "Aday profilinden hiçbir form alanı doldurulmadı; form gönderilmedi."})
                             else:
-                                submit = page.locator('button[type="submit"], input[type="submit"]')
-                                if submit.count() == 0:
-                                    result.update({"success": False, "status": "submit_control_not_found", "message": "Gönderim düğmesi bulunamadı; form gönderilmedi."})
+                                missing_required = self._required_fields_missing(page)
+                                submit = self._find_application_submit(page)
+                                if missing_required:
+                                    result.update({"success": False, "status": "required_fields_missing", "missing_fields": missing_required, "message": "Zorunlu alanlar eksik; form gönderilmedi."})
+                                elif submit is None:
+                                    result.update({"success": False, "status": "application_submit_control_not_found", "message": "Başvuru formuna ait gönderim düğmesi doğrulanamadı; form gönderilmedi."})
                                 else:
-                                    submit.first.click(timeout=5000)
+                                    submit.click(timeout=5000)
                                     page.wait_for_timeout(900)
                                     confirmation = page.locator("body").inner_text(timeout=5000)
                                     result.update({"success": True, "status": "submission_attempted", "confirmation_excerpt": confirmation[:1800], "message": "Gönderim denendi; başarı ancak sayfadaki doğrulanabilir teyitle kesinleştirilmelidir."})
