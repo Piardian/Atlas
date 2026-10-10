@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import quote_plus, urljoin, urlparse
 
 from crewai.tools import BaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 _BLOCKED_AUTO_SUBMIT_DOMAINS = {"linkedin.com", "www.linkedin.com"}
@@ -61,7 +61,7 @@ def _auto_submit_allowed(url: str) -> tuple[bool, str]:
     if not host:
         return False, "Geçerli bir URL/host bulunamadı."
     if any(_domain_matches(host, blocked) for blocked in _BLOCKED_AUTO_SUBMIT_DOMAINS):
-        return False, "LinkedIn üzerinde otomatik gönderim bu araçta kapalı; ilan keşfi ve form hazırlığı kullanılabilir."
+        return False, "LinkedIn üzerinde otomatik gönderim bu araçta kapalı."
     if os.getenv("ATLAS_JOB_AUTO_SUBMIT", "").casefold() not in {"1", "true", "yes"}:
         return False, "Otomatik gönderim kapalı. ATLAS_JOB_AUTO_SUBMIT=true ayarlanmalı."
     allowed = [
@@ -99,6 +99,7 @@ class JobApplicationToolInput(BaseModel):
 
 class JobApplicationTool(BaseTool):
     """Playwright persistent-context job discovery and application preparation."""
+    _profile_dir: Path = PrivateAttr()
     name: str = "Atlas Job Search & Application Tool"
     description: str = (
         "İş ilanlarını Playwright ile keşfeder, ilan detaylarını okur, aday profiline göre temel eşleşme puanı verir "
@@ -147,6 +148,8 @@ class JobApplicationTool(BaseTool):
                 if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                     continue
                 if href in seen or not label or len(label) < 3:
+                    continue
+                if _domain_matches((parsed.hostname or ""), "linkedin.com"):
                     continue
                 searchable = (href + " " + label).casefold()
                 if not any(hint in searchable for hint in _JOB_URL_HINTS + _JOB_TEXT_HINTS):
@@ -230,6 +233,14 @@ class JobApplicationTool(BaseTool):
             from playwright.sync_api import sync_playwright
         except ImportError:
             return "Playwright yüklü değil. Kurulum: pip install playwright && playwright install chromium"
+
+        if url and _domain_matches((urlparse(url).hostname or ""), "linkedin.com"):
+            return json.dumps({
+                "success": False,
+                "status": "platform_automation_disabled",
+                "url": url,
+                "message": "LinkedIn üzerinde Playwright ile otomatik gezinme/veri çıkarma/başvuru bu skill tarafından yapılmıyor. Yetkili bir entegrasyon kullanın veya LinkedIn işlemini manuel yürütün."
+            }, ensure_ascii=False)
 
         try:
             profile_raw = self._parse_json(candidate_profile_json, "candidate_profile_json")
