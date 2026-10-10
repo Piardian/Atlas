@@ -233,15 +233,23 @@ class JobApplicationTool(BaseTool):
             "portfolio_url": ("portfolio", "website", "personal site", "portfolyo", "web sitesi"),
         }
         flattened = {_normalise(k.split(".")[-1]): v for k, v in values.items()}
+        resume_path = next(
+            (
+                value for key, value in profile.items()
+                if key.split(".")[-1].casefold() in {"resume_path", "cv_path", "resume_file_path", "cv_file_path"}
+            ),
+            None,
+        )
         filled, skipped = [], []
-        controls = page.locator("input:not([type=hidden]):not([type=submit]):not([type=button]), textarea")
+        controls = page.locator("input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select")
         for index in range(min(controls.count(), 80)):
             control = controls.nth(index)
             try:
                 if not control.is_visible() or not control.is_enabled():
                     continue
                 kind = (control.get_attribute("type") or "text").casefold()
-                if kind in {"password", "file", "checkbox", "radio", "submit", "button"}:
+                tag_name = control.evaluate("(el) => el.tagName.toLowerCase()")
+                if kind in {"password", "checkbox", "radio", "submit", "button"}:
                     continue
                 key_text = " ".join(filter(None, [
                     control.get_attribute("name"), control.get_attribute("id"),
@@ -253,6 +261,13 @@ class JobApplicationTool(BaseTool):
                 except Exception:
                     pass
                 key = _normalise(key_text)
+                if kind == "file":
+                    if resume_path and Path(resume_path).expanduser().is_file():
+                        control.set_input_files(str(Path(resume_path).expanduser().resolve()))
+                        filled.append({"field": key_text[:100] or "resume_upload", "source": "candidate_profile_file"})
+                    else:
+                        skipped.append(key_text[:100] or f"file_field_{index}")
+                    continue
                 match = None
                 for profile_key, value in flattened.items():
                     if profile_key and key and (profile_key in key or key in profile_key):
@@ -265,7 +280,13 @@ class JobApplicationTool(BaseTool):
                             if match:
                                 break
                 if match:
-                    control.fill(match)
+                    if tag_name == "select":
+                        try:
+                            control.select_option(label=match)
+                        except Exception:
+                            control.select_option(value=match)
+                    else:
+                        control.fill(match)
                     filled.append({"field": key_text[:100], "source": "candidate_profile_or_answers"})
                 else:
                     skipped.append(key_text[:100] or f"field_{index}")
