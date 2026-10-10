@@ -210,7 +210,12 @@ class JobApplicationTool(BaseTool):
                     if not field.is_checked():
                         missing.append(field.get_attribute("name") or field.get_attribute("id") or f"required_{index}")
                     continue
-                value = field.input_value(timeout=300) if kind != "file" else (field.get_attribute("value") or "")
+                if kind == "file":
+                    has_file = field.evaluate("(el) => Boolean(el.files && el.files.length)")
+                    if not has_file:
+                        missing.append(field.get_attribute("name") or field.get_attribute("id") or f"required_{index}")
+                    continue
+                value = field.input_value(timeout=300)
                 if not value.strip():
                     missing.append(field.get_attribute("name") or field.get_attribute("id") or f"required_{index}")
             except Exception:
