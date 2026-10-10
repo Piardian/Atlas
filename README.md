@@ -437,7 +437,7 @@ Important MVP limits:
 - LinkedIn URLs are intentionally excluded from Playwright navigation/extraction and submission in this skill. Use a platform-authorized integration or perform LinkedIn actions manually.
 - CAPTCHA/MFA or other human verification stops the operation; the tool does not bypass it.
 - Discovery and matching are heuristic, not a guarantee of job fit. Inspect job descriptions before relying on a score.
-- Generic form filling does not yet include platform-specific selectors, resume upload workflows, or verified per-site success detection. A `submission_attempted` result is not proof of successful submission.
+- Generic form filling does not yet include platform-specific selectors or verified per-site success detection. Resume upload is supported when the candidate profile includes an existing local `resume_path` or `cv_path`. A `submission_attempted` result is not proof of successful submission.
 - The auto-submit allowlist is a local safety gate, not a legal determination. Enable it only for sites and workflows that permit the intended automation.
 
 # Running Atlas
